@@ -125,9 +125,9 @@ class MetricCard(QFrame):
     """Widget de tarjeta de métrica"""
     def __init__(self, titulo, valor, color="#3498db", icono="📊"):
         super().__init__()
-        self.setMinimumHeight(85)
-        self.setMaximumHeight(110)
-        self.setMinimumWidth(150)
+        self.setMinimumHeight(120)
+        self.setMaximumHeight(160)
+        self.setMinimumWidth(160)
         self.setStyleSheet(f"""
             MetricCard {{
                 background-color: white;
@@ -137,8 +137,8 @@ class MetricCard(QFrame):
         """)
         
         layout = QVBoxLayout()
-        layout.setContentsMargins(15, 12, 15, 12)
-        layout.setSpacing(2)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(5)
         
         # Layout horizontal para icono y título
         header_layout = QHBoxLayout()
@@ -160,8 +160,9 @@ class MetricCard(QFrame):
         
         # Valor
         label_valor = QLabel(str(valor))
-        label_valor.setStyleSheet(f"color: {color}; font-size: 32px; font-weight: bold;")
+        label_valor.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
         label_valor.setAlignment(Qt.AlignLeft)
+        label_valor.setWordWrap(True)
         
         layout.addWidget(label_valor)
         layout.addStretch()

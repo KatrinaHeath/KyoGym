@@ -56,6 +56,23 @@ def init_database():
         )
     """)
     
+    # Tabla de inventario
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventario (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            categoria TEXT,
+            cantidad INTEGER DEFAULT 0,
+            precio REAL DEFAULT 0.0,
+            fecha_registro DATE NOT NULL,
+            activo INTEGER DEFAULT 1
+        )
+    """)
+    # Asegurarse de que la columna 'precio' exista en instalaciones previas
+    cursor.execute("PRAGMA table_info(inventario)")
+    cols = [r[1] for r in cursor.fetchall()]
+    if 'precio' not in cols:
+        cursor.execute("ALTER TABLE inventario ADD COLUMN precio REAL DEFAULT 0.0")
     # Crear índices para mejorar el rendimiento
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_membresias_cliente 

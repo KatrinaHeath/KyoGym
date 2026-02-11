@@ -5,7 +5,7 @@ Aplicación de escritorio para Windows
 import sys
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QPushButton, QStackedWidget, QLabel, QFrame)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QIcon
 
 # Inicializar base de datos
@@ -184,10 +184,31 @@ def main():
     # Configurar estilo global
     app.setStyle("Fusion")
     
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec())
+    try:
+        print("[DEBUG] Creando ventana MainWindow()")
+        window = MainWindow()
+        print("[DEBUG] Llamando window.show()")
+        window.show()
+        # Intentos adicionales para asegurar que la ventana quede visible
+        window.showNormal()
+        app.processEvents()
+        print("[DEBUG] Llamando raise_() y activateWindow()")
+        window.raise_()
+        window.activateWindow()
+        # Forzar estado normal y activo
+        window.setWindowState((window.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
+        QTimer.singleShot(150, lambda: (window.raise_(), window.activateWindow()))
+        QTimer.singleShot(500, lambda: (window.raise_(), window.activateWindow()))
+
+        print("[DEBUG] Ejecutando app.exec()")
+        exit_code = app.exec()
+        print(f"[DEBUG] app.exec() finalizó con código: {exit_code}")
+        sys.exit(exit_code)
+    except Exception as e:
+        import traceback
+        print("[ERROR] Excepción en main():", e)
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

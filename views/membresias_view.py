@@ -297,13 +297,14 @@ class MembresiasView(QWidget):
                 self.cargar_datos()
                 
                 # Preguntar si desea ver la factura
-                respuesta = QMessageBox.question(
-                    self,
-                    "Membresía Creada",
-                    f"Membresía creada exitosamente.\nFactura #{membresia_id} generada.\n\n¿Desea abrir la factura?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Question)
+                msg.setWindowTitle("Membresía Creada")
+                msg.setText(f"Membresía creada exitosamente.\nFactura #{membresia_id} generada.\n\n¿Desea abrir la factura?")
+                msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ color: #2c3e50; padding:6px 12px; } QPushButton:hover{ background-color: #f0f0f0; }")
+                respuesta = msg.exec()
+
                 if respuesta == QMessageBox.Yes:
                     abrir_factura(ruta_factura)
                     

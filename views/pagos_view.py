@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QDialog, QFormLayout, QLineEdit, QDateEdit, QComboBox,
                                QMessageBox, QDialogButtonBox)
 from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor, QBrush
 from datetime import date
 from services import pago_service, cliente_service, membresia_service
 
@@ -258,7 +258,7 @@ class PagosView(QWidget):
             
             # Monto - verde
             item_monto = QTableWidgetItem(f"${pago['monto']:,.0f}")
-            item_monto.setForeground(Qt.GlobalColor(0x27ae60))
+            item_monto.setForeground(QBrush(QColor('#27ae60')))
             self.tabla.setItem(i, 2, item_monto)
             
             # Método - negro
@@ -290,7 +290,7 @@ class PagosView(QWidget):
             
             # Monto - verde
             item_monto = QTableWidgetItem(f"${pago['monto']:,.0f}")
-            item_monto.setForeground(Qt.GlobalColor(0x27ae60))
+            item_monto.setForeground(QBrush(QColor('#27ae60')))
             self.tabla.setItem(i, 2, item_monto)
             
             # Método - negro
@@ -323,4 +323,10 @@ class PagosView(QWidget):
             )
             self.cargar_datos()
             self.actualizar_total_mes()
-            QMessageBox.information(self, "Éxito", "Pago registrado correctamente")
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Éxito")
+            msg.setText("Pago registrado correctamente")
+            msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ padding:6px 12px; }")
+            msg.setStandardButtons(QMessageBox.Ok)
+            msg.exec()

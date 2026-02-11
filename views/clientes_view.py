@@ -141,6 +141,7 @@ class ClientesView(QWidget):
                 border: 2px solid #e0e0e0;
                 border-radius: 5px;
                 font-size: 13px;
+                color: #2c3e50;
             }
         """)
         self.buscar_input.textChanged.connect(self.cargar_datos)
@@ -294,7 +295,13 @@ class ClientesView(QWidget):
                     sexo=datos['sexo'],
                     fecha_nacimiento=datos['fecha_nacimiento']
                 )
-                QMessageBox.information(self, "Éxito", "Cliente agregado exitosamente")
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setWindowTitle("Éxito")
+                msg.setText("Cliente agregado exitosamente")
+                msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ padding:6px 12px; }")
+                msg.setStandardButtons(QMessageBox.Ok)
+                msg.exec()
                 self.cargar_datos()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error al agregar cliente: {str(e)}")
@@ -312,24 +319,37 @@ class ClientesView(QWidget):
                     sexo=datos['sexo'],
                     fecha_nacimiento=datos['fecha_nacimiento']
                 )
-                QMessageBox.information(self, "Éxito", "Cliente actualizado exitosamente")
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setWindowTitle("Éxito")
+                msg.setText("Cliente actualizado exitosamente")
+                msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ padding:6px 12px; }")
+                msg.setStandardButtons(QMessageBox.Ok)
+                msg.exec()
                 self.cargar_datos()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error al actualizar cliente: {str(e)}")
     
     def eliminar_cliente(self, cliente_id):
         """Elimina un cliente"""
-        respuesta = QMessageBox.question(
-            self,
-            "Confirmar eliminación",
-            "¿Está seguro de eliminar este cliente?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Question)
+        msg.setWindowTitle("Confirmar eliminación")
+        msg.setText("¿Está seguro de eliminar este cliente?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ color: #2c3e50; padding:6px 12px; } QPushButton:hover{ background-color: #f0f0f0; }")
+        respuesta = msg.exec()
+
         if respuesta == QMessageBox.Yes:
             try:
                 cliente_service.eliminar_cliente(cliente_id)
-                QMessageBox.information(self, "Éxito", "Cliente eliminado exitosamente")
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setWindowTitle("Éxito")
+                msg.setText("Cliente eliminado exitosamente")
+                msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ padding:6px 12px; }")
+                msg.setStandardButtons(QMessageBox.Ok)
+                msg.exec()
                 self.cargar_datos()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error al eliminar cliente: {str(e)}")
