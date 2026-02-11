@@ -3,13 +3,13 @@ import os
 from pathlib import Path
 
 # Nombre de la aplicación
-APP_NAME = "GymApp"
+APP_NAME = "Kyo-Gym"
 
-# Ruta de datos de aplicación
-APP_DATA_DIR = Path(os.getenv('APPDATA')) / APP_NAME
+# Ruta de datos de aplicación - CAMBIO: usar carpeta del proyecto
+APP_DATA_DIR = Path(__file__).parent.parent  # Carpeta raíz del proyecto (c:\KyoGym)
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Ruta de la base de datos
+# Ruta de la base de datos - estará en c:\KyoGym\gimnasio.db
 DB_PATH = APP_DATA_DIR / "gimnasio.db"
 
 # Estados de membresía

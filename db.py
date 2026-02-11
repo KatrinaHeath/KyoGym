@@ -5,8 +5,10 @@ from utils.constants import DB_PATH
 
 def get_connection():
     """Obtiene una conexión a la base de datos"""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     conn.row_factory = sqlite3.Row
+    # Habilitar WAL mode para mejor concurrencia
+    conn.execute('PRAGMA journal_mode=WAL')
     return conn
 
 
@@ -37,7 +39,9 @@ def init_database():
             fecha_inicio DATE NOT NULL,
             fecha_vencimiento DATE NOT NULL,
             monto REAL NOT NULL,
-            FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+            pago_id INTEGER,
+            FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE,
+            FOREIGN KEY (pago_id) REFERENCES pagos(id) ON DELETE SET NULL
         )
     """)
     
@@ -46,33 +50,14 @@ def init_database():
         CREATE TABLE IF NOT EXISTS pagos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id INTEGER NOT NULL,
-            membresia_id INTEGER,
             fecha DATE NOT NULL,
             monto REAL NOT NULL,
             metodo TEXT NOT NULL,
             concepto TEXT,
-            FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE,
-            FOREIGN KEY (membresia_id) REFERENCES membresias(id) ON DELETE SET NULL
+            FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
         )
     """)
     
-    # Tabla de inventario
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS inventario (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            categoria TEXT,
-            cantidad INTEGER DEFAULT 0,
-            precio REAL DEFAULT 0.0,
-            fecha_registro DATE NOT NULL,
-            activo INTEGER DEFAULT 1
-        )
-    """)
-    # Asegurarse de que la columna 'precio' exista en instalaciones previas
-    cursor.execute("PRAGMA table_info(inventario)")
-    cols = [r[1] for r in cursor.fetchall()]
-    if 'precio' not in cols:
-        cursor.execute("ALTER TABLE inventario ADD COLUMN precio REAL DEFAULT 0.0")
     # Crear índices para mejorar el rendimiento
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_membresias_cliente 
@@ -92,6 +77,30 @@ def init_database():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_pagos_fecha 
         ON pagos(fecha)
+    """)
+    
+    # Tabla de inventario
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventario (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            cantidad INTEGER NOT NULL DEFAULT 0,
+            precio REAL DEFAULT 0.0,
+            fecha_registro DATE DEFAULT (DATE('now'))
+        )
+    """)
+    
+    # Índice para búsquedas rápidas por nombre
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_inventario_nombre 
+        ON inventario(nombre)
+    """)
+    
+    # Índice para búsquedas por categoría
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_inventario_categoria 
+        ON inventario(categoria)
     """)
     
     conn.commit()

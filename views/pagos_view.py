@@ -2,20 +2,26 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                                QTableWidget, QTableWidgetItem, QHeaderView, QLabel,
                                QDialog, QFormLayout, QLineEdit, QDateEdit, QComboBox,
-                               QMessageBox, QDialogButtonBox)
-from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QFont, QColor, QBrush
+                               QMessageBox, QDialogButtonBox, QCompleter)
+from PySide6.QtCore import Qt, QDate, QSortFilterProxyModel
+from PySide6.QtGui import QFont, QColor
 from datetime import date
 from services import pago_service, cliente_service, membresia_service
+from utils.factura_generator import generar_factura_pago, abrir_factura
+from pathlib import Path
 
 
 class RegistrarPagoDialog(QDialog):
-    """Diálogo para registrar un nuevo pago"""
-    def __init__(self, parent=None):
+    """Diálogo para registrar o editar un pago"""
+    def __init__(self, parent=None, pago=None):
         super().__init__(parent)
-        self.setWindowTitle("Registrar Pago")
+        self.pago = pago
+        self.setWindowTitle("Editar Pago" if pago else "Registrar Pago")
         self.setMinimumWidth(400)
         self.init_ui()
+        
+        if pago:
+            self.cargar_datos_pago()
     
     def init_ui(self):
         layout = QFormLayout()
@@ -40,11 +46,78 @@ class RegistrarPagoDialog(QDialog):
             QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
                 border: 2px solid #3498db;
             }
+            QComboBox QAbstractItemView {
+                color: black;
+                background-color: white;
+                selection-background-color: #3498db;
+                selection-color: black;
+            }
+            QCalendarWidget QAbstractItemView {
+                selection-background-color: #3498db;
+                selection-color: black;
+                color: black;
+            }
+            QCalendarWidget QWidget {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #3498db;
+            }
+            QCalendarWidget QToolButton {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QMenu {
+                color: black;
+                background-color: white;
+            }
+            QCalendarWidget QSpinBox {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_prevmonth,
+            QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_nextmonth {
+                qproperty-icon: none;
+            }
+            QCalendarWidget QAbstractItemView::item:disabled {
+                color: #cccccc;
+            }
+            QCalendarWidget QTableView::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QCalendarWidget QWidget {
+                alternate-background-color: white;
+            }
+            QCalendarWidget QAbstractItemView:enabled[isHeaderRow="true"] {
+                color: white;
+                font-weight: bold;
+                background-color: #3498db;
+            }
+            QCalendarWidget QTableView {
+                color: black;
+            }
+            QPushButton {
+                color: black;
+            }
         """)
         
         # Selector de cliente
         self.combo_cliente = QComboBox()
+        self.combo_cliente.setEditable(True)  # Hacer editable para escribir
+        self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)  # No insertar nuevos items
         self.cargar_clientes()
+        
+        # Configurar autocompletado
+        completer = self.combo_cliente.completer()
+        if completer:
+            completer.setCompletionMode(QCompleter.PopupCompletion)
+            completer.setCaseSensitivity(Qt.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchContains)  # Buscar en cualquier parte del texto
+        
         layout.addRow("Cliente:", self.combo_cliente)
         
         # Fecha
@@ -56,6 +129,11 @@ class RegistrarPagoDialog(QDialog):
         # Monto
         self.monto = QLineEdit()
         self.monto.setPlaceholderText("0.00")
+        # Validador: solo números y un punto decimal
+        from PySide6.QtGui import QRegularExpressionValidator
+        from PySide6.QtCore import QRegularExpression
+        validator_monto = QRegularExpressionValidator(QRegularExpression(r"^\d*\.?\d*$"))
+        self.monto.setValidator(validator_monto)
         layout.addRow("Monto:", self.monto)
         
         # Método de pago
@@ -84,18 +162,97 @@ class RegistrarPagoDialog(QDialog):
         for cliente in clientes:
             self.combo_cliente.addItem(cliente['nombre'], cliente['id'])
     
+    def cargar_datos_pago(self):
+        """Carga los datos del pago a editar"""
+        if not self.pago:
+            return
+        
+        # Seleccionar cliente
+        for i in range(self.combo_cliente.count()):
+            if self.combo_cliente.itemData(i) == self.pago['cliente_id']:
+                self.combo_cliente.setCurrentIndex(i)
+                break
+        
+        # Fecha
+        fecha_parts = self.pago['fecha'].split('-')
+        self.fecha.setDate(QDate(int(fecha_parts[0]), int(fecha_parts[1]), int(fecha_parts[2])))
+        
+        # Monto
+        self.monto.setText(str(self.pago['monto']))
+        
+        # Método
+        metodo = self.pago.get('metodo_pago', 'Efectivo')
+        index = self.metodo.findText(metodo)
+        if index >= 0:
+            self.metodo.setCurrentIndex(index)
+        
+        # Concepto
+        self.concepto.setText(self.pago.get('concepto', ''))
+    
     def aceptar(self):
         """Valida y acepta el diálogo"""
         if self.combo_cliente.currentData() is None:
-            QMessageBox.warning(self, "Error", "Seleccione un cliente")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText("Seleccione un cliente")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: white;
+                }
+                QLabel {
+                    color: black;
+                    font-size: 13px;
+                    min-width: 300px;
+                }
+                QPushButton {
+                    background-color: #3498db;
+                    color: white;
+                    padding: 8px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #2980b9;
+                }
+            """)
+            msg.exec()
             return
         
         try:
-            monto = float(self.monto.text())
+            monto = float(self.monto.text().replace(',', '.'))
             if monto <= 0:
                 raise ValueError()
         except ValueError:
-            QMessageBox.warning(self, "Error", "Ingrese un monto válido mayor a 0")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText("Ingrese un monto válido mayor a 0 (puede usar decimales, ej: 0.50)")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: white;
+                }
+                QLabel {
+                    color: black;
+                    font-size: 13px;
+                    min-width: 300px;
+                }
+                QPushButton {
+                    background-color: #3498db;
+                    color: white;
+                    padding: 8px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #2980b9;
+                }
+            """)
+            msg.exec()
             return
         
         self.accept()
@@ -103,19 +260,14 @@ class RegistrarPagoDialog(QDialog):
     def obtener_datos(self):
         """Retorna los datos ingresados"""
         fecha = self.fecha.date()
-        
-        # Obtener membresía activa del cliente
         cliente_id = self.combo_cliente.currentData()
-        membresia = membresia_service.obtener_membresia_activa(cliente_id)
-        membresia_id = membresia['id'] if membresia else None
         
         return {
             'cliente_id': cliente_id,
             'fecha': date(fecha.year(), fecha.month(), fecha.day()),
             'monto': float(self.monto.text()),
             'metodo': self.metodo.currentText(),
-            'concepto': self.concepto.text(),
-            'membresia_id': membresia_id
+            'concepto': self.concepto.text()
         }
 
 
@@ -150,9 +302,11 @@ class PagosView(QWidget):
                 border: none;
                 border-radius: 5px;
                 font-weight: bold;
+                font-size: 13px;
             }
             QPushButton:hover {
                 background-color: #2980b9;
+                color: white;
             }
         """)
         btn_registrar.clicked.connect(self.registrar_pago)
@@ -182,7 +336,7 @@ class PagosView(QWidget):
             }
             QPushButton:checked {
                 background-color: #2196F3;
-                color: white;
+                color: black;
                 border: 2px solid #1976D2;
             }
         """
@@ -211,8 +365,8 @@ class PagosView(QWidget):
         
         # Tabla
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(5)
-        self.tabla.setHorizontalHeaderLabels(["Cliente", "Fecha", "Monto", "Método", "Concepto"])
+        self.tabla.setColumnCount(7)
+        self.tabla.setHorizontalHeaderLabels(["Cliente", "Fecha", "Monto", "Método", "Concepto", "Factura", "Acciones"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
@@ -257,8 +411,8 @@ class PagosView(QWidget):
             self.tabla.setItem(i, 1, item_fecha)
             
             # Monto - verde
-            item_monto = QTableWidgetItem(f"${pago['monto']:,.0f}")
-            item_monto.setForeground(QBrush(QColor('#27ae60')))
+            item_monto = QTableWidgetItem(f"${pago['monto']:,.2f}")
+            item_monto.setForeground(QColor("#27ae60"))
             self.tabla.setItem(i, 2, item_monto)
             
             # Método - negro
@@ -270,6 +424,72 @@ class PagosView(QWidget):
             item_concepto = QTableWidgetItem(pago.get('concepto', ''))
             item_concepto.setForeground(Qt.black)
             self.tabla.setItem(i, 4, item_concepto)
+            
+            # Botón Ver Factura
+            btn_ver_factura = QPushButton("Ver Factura")
+            btn_ver_factura.setStyleSheet("""
+                QPushButton {
+                    background-color: #9b59b6;
+                    color: white;
+                    padding: 5px 15px;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #8e44ad;
+                    color: white;
+                }
+            """)
+            btn_ver_factura.clicked.connect(lambda checked, p=pago: self.ver_factura_pago(p))
+            self.tabla.setCellWidget(i, 5, btn_ver_factura)
+            
+            # Botones de acciones
+            acciones_widget = QWidget()
+            acciones_layout = QHBoxLayout(acciones_widget)
+            acciones_layout.setContentsMargins(5, 0, 5, 0)
+            acciones_layout.setSpacing(5)
+            
+            btn_editar = QPushButton("Editar")
+            btn_editar.setStyleSheet("""
+                QPushButton {
+                    background-color: #3498db;
+                    color: white;
+                    padding: 5px 15px;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #2980b9;
+                    color: white;
+                }
+            """)
+            btn_editar.clicked.connect(lambda checked, p=pago: self.editar_pago(p))
+            acciones_layout.addWidget(btn_editar)
+            
+            btn_eliminar = QPushButton("Eliminar")
+            btn_eliminar.setStyleSheet("""
+                QPushButton {
+                    background-color: #e74c3c;
+                    color: white;
+                    padding: 5px 15px;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #c0392b;
+                    color: white;
+                }
+            """)
+            btn_eliminar.clicked.connect(lambda checked, pid=pago['id']: self.eliminar_pago(pid))
+            acciones_layout.addWidget(btn_eliminar)
+            
+            self.tabla.setCellWidget(i, 6, acciones_widget)
     
     def cargar_pagos_mes(self):
         """Carga solo los pagos del mes actual"""
@@ -289,8 +509,8 @@ class PagosView(QWidget):
             self.tabla.setItem(i, 1, item_fecha)
             
             # Monto - verde
-            item_monto = QTableWidgetItem(f"${pago['monto']:,.0f}")
-            item_monto.setForeground(QBrush(QColor('#27ae60')))
+            item_monto = QTableWidgetItem(f"${pago['monto']:,.2f}")
+            item_monto.setForeground(QColor("#27ae60"))
             self.tabla.setItem(i, 2, item_monto)
             
             # Método - negro
@@ -302,31 +522,313 @@ class PagosView(QWidget):
             item_concepto = QTableWidgetItem(pago.get('concepto', ''))
             item_concepto.setForeground(Qt.black)
             self.tabla.setItem(i, 4, item_concepto)
+            
+            # Botón Ver Factura
+            btn_ver_factura = QPushButton("Ver Factura")
+            btn_ver_factura.setStyleSheet("""
+                QPushButton {
+                    background-color: #9b59b6;
+                    color: white;
+                    padding: 5px 15px;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #8e44ad;
+                    color: white;
+                }
+            """)
+            btn_ver_factura.clicked.connect(lambda checked, p=pago: self.ver_factura_pago(p))
+            self.tabla.setCellWidget(i, 5, btn_ver_factura)
+            
+            # Botones de acciones
+            acciones_widget = QWidget()
+            acciones_layout = QHBoxLayout(acciones_widget)
+            acciones_layout.setContentsMargins(5, 0, 5, 0)
+            acciones_layout.setSpacing(5)
+            
+            btn_editar = QPushButton("Editar")
+            btn_editar.setStyleSheet("""
+                QPushButton {
+                    background-color: #3498db;
+                    color: white;
+                    padding: 5px 15px;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #2980b9;
+                    color: white;
+                }
+            """)
+            btn_editar.clicked.connect(lambda checked, p=pago: self.editar_pago(p))
+            acciones_layout.addWidget(btn_editar)
+            
+            btn_eliminar = QPushButton("Eliminar")
+            btn_eliminar.setStyleSheet("""
+                QPushButton {
+                    background-color: #e74c3c;
+                    color: white;
+                    padding: 5px 15px;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #c0392b;
+                    color: white;
+                }
+            """)
+            btn_eliminar.clicked.connect(lambda checked, pid=pago['id']: self.eliminar_pago(pid))
+            acciones_layout.addWidget(btn_eliminar)
+            
+            self.tabla.setCellWidget(i, 6, acciones_widget)
     
     def actualizar_total_mes(self):
         """Actualiza el total de pagos del mes"""
         total = pago_service.calcular_total_mes()
-        self.label_total.setText(f"Total del mes: ${total:,.0f}")
+        self.label_total.setText(f"Total del mes: ${total:,.2f}")
     
     def registrar_pago(self):
         """Abre diálogo para registrar pago"""
         dialog = RegistrarPagoDialog(self)
         if dialog.exec():
             datos = dialog.obtener_datos()
-            pago_service.crear_pago(
+            pago_id = pago_service.crear_pago(
                 cliente_id=datos['cliente_id'],
                 fecha_pago=datos['fecha'],
                 monto=datos['monto'],
                 metodo=datos['metodo'],
-                concepto=datos['concepto'],
-                membresia_id=datos['membresia_id']
+                concepto=datos['concepto']
+            )
+            
+            # Generar factura
+            pago = pago_service.obtener_pago(pago_id)
+            cliente = cliente_service.obtener_cliente(datos['cliente_id'])
+            ruta_factura = generar_factura_pago(pago, cliente)
+            
+            self.cargar_datos()
+            self.actualizar_total_mes()
+            
+            # Mensaje con estilo y botón para ver factura
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Éxito")
+            msg.setText("Pago registrado correctamente")
+            msg.setInformativeText("¿Desea ver la factura generada?")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: white;
+                }
+                QLabel {
+                    color: black;
+                    font-size: 13px;
+                    min-width: 300px;
+                }
+                QPushButton {
+                    background-color: #27ae60;
+                    color: white;
+                    padding: 8px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #229954;
+                }
+            """)
+            btn_ver = msg.addButton("Ver Factura", QMessageBox.ActionRole)
+            msg.addButton("Cerrar", QMessageBox.RejectRole)
+            msg.exec()
+            
+            if msg.clickedButton() == btn_ver:
+                abrir_factura(ruta_factura)
+    
+    def editar_pago(self, pago):
+        """Abre diálogo para editar un pago"""
+        dialog = RegistrarPagoDialog(self, pago=pago)
+        if dialog.exec():
+            datos = dialog.obtener_datos()
+            pago_service.actualizar_pago(
+                pago_id=pago['id'],
+                cliente_id=datos['cliente_id'],
+                fecha_pago=datos['fecha'],
+                monto=datos['monto'],
+                metodo=datos['metodo'],
+                concepto=datos['concepto']
             )
             self.cargar_datos()
             self.actualizar_total_mes()
+            # Mensaje con estilo
             msg = QMessageBox(self)
-            msg.setIcon(QMessageBox.Information)
             msg.setWindowTitle("Éxito")
-            msg.setText("Pago registrado correctamente")
-            msg.setStyleSheet("QLabel{ color: #2c3e50; } QPushButton{ padding:6px 12px; }")
-            msg.setStandardButtons(QMessageBox.Ok)
+            msg.setText("Pago actualizado correctamente")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: white;
+                }
+                QLabel {
+                    color: black;
+                    font-size: 13px;
+                    min-width: 300px;
+                }
+                QPushButton {
+                    background-color: #27ae60;
+                    color: white;
+                    padding: 8px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #229954;
+                }
+            """)
             msg.exec()
+    
+    def ver_factura_pago(self, pago):
+        """Abre la factura de un pago"""
+        try:
+            # Obtener información completa del cliente
+            cliente = cliente_service.obtener_cliente(pago['cliente_id'])
+            
+            # Generar o buscar la factura
+            ruta_factura = Path.home() / "KyoGym" / "Facturas" / f"Factura_Pago_{pago['id']}.pdf"
+            
+            # Si la factura no existe, generarla
+            if not ruta_factura.exists():
+                ruta_factura = generar_factura_pago(pago, cliente)
+            
+            # Abrir la factura
+            abrir_factura(str(ruta_factura))
+            
+        except Exception as e:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText(f"No se pudo abrir la factura: {str(e)}")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: white;
+                }
+                QLabel {
+                    color: black;
+                    font-size: 13px;
+                    min-width: 300px;
+                }
+                QPushButton {
+                    background-color: #e74c3c;
+                    color: white;
+                    padding: 8px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #c0392b;
+                }
+            """)
+            msg.exec()
+    
+    def eliminar_pago(self, pago_id):
+        """Elimina un pago"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Confirmar eliminación")
+        msg.setText("¿Está seguro de eliminar este pago?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.No)
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: white;
+            }
+            QLabel {
+                color: black;
+                font-size: 13px;
+                min-width: 300px;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        respuesta = msg.exec()
+        
+        if respuesta == QMessageBox.Yes:
+            try:
+                pago_service.eliminar_pago(pago_id)
+                self.cargar_datos()
+                self.actualizar_total_mes()
+                # Mensaje con estilo
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Éxito")
+                msg.setText("Pago eliminado correctamente")
+                msg.setStyleSheet("""
+                    QMessageBox {
+                        background-color: white;
+                    }
+                    QLabel {
+                        color: black;
+                        font-size: 13px;
+                        min-width: 300px;
+                    }
+                    QPushButton {
+                        background-color: #27ae60;
+                        color: white;
+                        padding: 8px 20px;
+                        border: none;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 13px;
+                        min-width: 80px;
+                    }
+                    QPushButton:hover {
+                        background-color: #229954;
+                    }
+                """)
+                msg.exec()
+            except Exception as e:
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Error")
+                msg.setText(f"Error al eliminar pago: {str(e)}")
+                msg.setStyleSheet("""
+                    QMessageBox {
+                        background-color: white;
+                    }
+                    QLabel {
+                        color: black;
+                        font-size: 13px;
+                        min-width: 300px;
+                    }
+                    QPushButton {
+                        background-color: #e74c3c;
+                        color: white;
+                        padding: 8px 20px;
+                        border: none;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 13px;
+                        min-width: 80px;
+                    }
+                    QPushButton:hover {
+                        background-color: #c0392b;
+                    }
+                """)
+                msg.exec()

@@ -59,6 +59,15 @@ class SimplePieChart(QWidget):
             ("Por Vencer", 0, QColor("#FF9800")),
             ("Vencida", 0, QColor("#F44336"))
         ]
+        self.setMouseTracking(True)
+        self.sector_bajo_cursor = None
+        self.size_increment_actual = 0.0  # Tamaño actual de agrandamiento (animado)
+        self.size_increment_objetivo = 0.0  # Tamaño objetivo
+        
+        # Timer para animación suave
+        self.animation_timer = QTimer()
+        self.animation_timer.timeout.connect(self.animate_size)
+        self.animation_timer.start(16)  # ~60 FPS
     
     def sizeHint(self):
         from PySide6.QtCore import QSize
@@ -72,6 +81,17 @@ class SimplePieChart(QWidget):
             ("Vencida", vencidas, QColor("#F44336"))
         ]
         self.update()  # Repintar el widget
+    
+    def animate_size(self):
+        """Anima suavemente el cambio de tamaño"""
+        # Interpolación suave hacia el objetivo
+        diferencia = self.size_increment_objetivo - self.size_increment_actual
+        if abs(diferencia) > 0.1:
+            self.size_increment_actual += diferencia * 0.2  # 20% de la diferencia cada frame
+            self.update()
+        elif abs(diferencia) > 0.01:
+            self.size_increment_actual = self.size_increment_objetivo
+            self.update()
     
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -93,19 +113,41 @@ class SimplePieChart(QWidget):
             painter.setPen(QPen(Qt.white, 2))
             painter.drawEllipse(int(x), int(y), int(size), int(size))
         else:
-            # Dibujar sectores
-            start_angle = 0
-            for label, value, color in self.datos:
+            # Dibujar sectores normales primero
+            start_angle = 90 * 16  # Empezar desde arriba (12 en punto)
+            for i, (label, value, color) in enumerate(self.datos):
                 if value > 0:
                     span_angle = int((value / total) * 360 * 16)
                     
-                    painter.setBrush(QBrush(color))
-                    painter.setPen(QPen(Qt.white, 2))
-                    painter.drawPie(int(x), int(y), int(size), int(size), start_angle, span_angle)
+                    # Dibujar todos los sectores con tamaño normal
+                    if i != self.sector_bajo_cursor:
+                        painter.setBrush(QBrush(color))
+                        painter.setPen(QPen(Qt.white, 2))
+                        painter.drawPie(int(x), int(y), int(size), int(size), start_angle, span_angle)
                     
                     start_angle += span_angle
+            
+            # Dibujar el sector seleccionado encima con mayor tamaño
+            if self.sector_bajo_cursor is not None and self.size_increment_actual > 0.1:
+                start_angle = 90 * 16
+                for i, (label, value, color) in enumerate(self.datos):
+                    if value > 0:
+                        span_angle = int((value / total) * 360 * 16)
+                        
+                        if i == self.sector_bajo_cursor:
+                            # Hacer el sector más grande con el tamaño actual de la animación
+                            larger_size = size + self.size_increment_actual
+                            larger_x = x - self.size_increment_actual / 2
+                            larger_y = y - self.size_increment_actual / 2
+                            
+                            painter.setBrush(QBrush(color))
+                            painter.setPen(QPen(Qt.white, 3))  # Borde más grueso
+                            painter.drawPie(int(larger_x), int(larger_y), int(larger_size), int(larger_size), start_angle, span_angle)
+                            break
+                        
+                        start_angle += span_angle
         
-        # Leyenda
+        # Leyenda con porcentajes
         legend_y = y + size + 20
         legend_x = 20
         painter.setFont(QFont("Arial", 10))
@@ -114,20 +156,105 @@ class SimplePieChart(QWidget):
             # Cuadrado de color
             painter.fillRect(legend_x, legend_y, 15, 15, color)
             
-            # Texto
+            # Texto con porcentaje
             painter.setPen(QColor("#2c3e50"))
+            porcentaje = (value / total * 100) if total > 0 else 0
             painter.drawText(legend_x + 20, legend_y + 12, f"{label}: {value}")
             
             legend_y += 20
+        
+        # Tooltip sobre el sector
+        if self.sector_bajo_cursor is not None and total > 0:
+            label, value, color = self.datos[self.sector_bajo_cursor]
+            porcentaje = (value / total * 100)
+            
+            # Fondo del tooltip
+            tooltip_text = f"{label}: {porcentaje:.1f}%"
+            font = QFont("Arial", 10, QFont.Bold)
+            painter.setFont(font)
+            
+            # Calcular tamaño del texto
+            from PySide6.QtGui import QFontMetrics
+            metrics = QFontMetrics(font)
+            text_width = metrics.horizontalAdvance(tooltip_text)
+            text_height = metrics.height()
+            
+            # Posición del tooltip (centro del gráfico)
+            tooltip_x = int(width / 2 - text_width / 2 - 10)
+            tooltip_y = int(y + size / 2 - text_height / 2 - 5)
+            
+            # Dibujar fondo del tooltip
+            painter.setBrush(QBrush(QColor(0, 0, 0, 180)))
+            painter.setPen(QPen(Qt.NoPen))
+            painter.drawRoundedRect(tooltip_x, tooltip_y, text_width + 20, text_height + 10, 5, 5)
+            
+            # Dibujar texto del tooltip
+            painter.setPen(QColor("#ffffff"))
+            painter.drawText(tooltip_x + 10, tooltip_y + text_height, tooltip_text)
+
+
+    def mouseMoveEvent(self, event):
+        """Detecta sobre qué sector está el mouse"""
+        width = self.width()
+        height = self.height()
+        size = min(width, height) - 80
+        center_x = width / 2
+        center_y = 20 + size / 2
+        
+        # Posición del mouse
+        mouse_x = event.pos().x()
+        mouse_y = event.pos().y()
+        
+        # Calcular distancia del centro
+        dx = mouse_x - center_x
+        dy = mouse_y - center_y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        # Si está dentro del círculo
+        if distance <= size / 2:
+            # Calcular ángulo en grados
+            # atan2 devuelve el ángulo desde el eje X positivo (3 en punto)
+            # Convertimos para que 0° esté arriba (12 en punto) y vaya en sentido horario
+            angle = math.atan2(dy, dx) * 180 / math.pi
+            # Ajustar para que 0° esté arriba (12 en punto)
+            angle = (angle - 90 + 360) % 360
+            
+            # Determinar en qué sector está
+            total = sum(d[1] for d in self.datos)
+            if total > 0:
+                current_angle = 0
+                for i, (label, value, color) in enumerate(self.datos):
+                    if value > 0:
+                        sector_angle = (value / total) * 360
+                        if current_angle <= angle < current_angle + sector_angle:
+                            if self.sector_bajo_cursor != i:
+                                self.sector_bajo_cursor = i
+                                self.size_increment_objetivo = 15.0  # Tamaño objetivo cuando hay hover
+                                self.update()
+                            return
+                        current_angle += sector_angle
+        
+        # Si no está sobre ningún sector
+        if self.sector_bajo_cursor is not None:
+            self.sector_bajo_cursor = None
+            self.size_increment_objetivo = 0.0  # Volver al tamaño normal
+            self.update()
+    
+    def leaveEvent(self, event):
+        """Limpia el tooltip cuando el mouse sale del widget"""
+        if self.sector_bajo_cursor is not None:
+            self.sector_bajo_cursor = None
+            self.size_increment_objetivo = 0.0  # Volver al tamaño normal
+            self.update()
 
 
 class MetricCard(QFrame):
     """Widget de tarjeta de métrica"""
     def __init__(self, titulo, valor, color="#3498db", icono="📊"):
         super().__init__()
-        self.setMinimumHeight(120)
-        self.setMaximumHeight(160)
-        self.setMinimumWidth(160)
+        self.setMinimumHeight(85)
+        self.setMaximumHeight(110)
+        self.setMinimumWidth(150)
         self.setStyleSheet(f"""
             MetricCard {{
                 background-color: white;
@@ -137,8 +264,8 @@ class MetricCard(QFrame):
         """)
         
         layout = QVBoxLayout()
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(5)
+        layout.setContentsMargins(15, 12, 15, 12)
+        layout.setSpacing(2)
         
         # Layout horizontal para icono y título
         header_layout = QHBoxLayout()
@@ -160,9 +287,8 @@ class MetricCard(QFrame):
         
         # Valor
         label_valor = QLabel(str(valor))
-        label_valor.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
+        label_valor.setStyleSheet(f"color: {color}; font-size: 32px; font-weight: bold;")
         label_valor.setAlignment(Qt.AlignLeft)
-        label_valor.setWordWrap(True)
         
         layout.addWidget(label_valor)
         layout.addStretch()
@@ -216,6 +342,7 @@ class DashboardView(QWidget):
                 border-radius: 20px;
                 font-size: 13px;
                 background-color: white;
+                color: black;
             }
             QLineEdit:focus {
                 border: 2px solid #3498db;
@@ -353,7 +480,7 @@ class DashboardView(QWidget):
             }
             QPushButton:checked {
                 background-color: #2196F3;
-                color: white;
+                color: black;
                 border: 2px solid #1976D2;
             }
         """
@@ -383,8 +510,8 @@ class DashboardView(QWidget):
         layout_membresias.addLayout(filtros_layout)
         
         self.tabla_membresias = QTableWidget()
-        self.tabla_membresias.setColumnCount(5)
-        self.tabla_membresias.setHorizontalHeaderLabels(["Cliente", "Inicio", "Vencimiento", "Estado", "Acciones"])
+        self.tabla_membresias.setColumnCount(4)
+        self.tabla_membresias.setHorizontalHeaderLabels(["Cliente", "Inicio", "Vencimiento", "Estado"])
         self.tabla_membresias.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla_membresias.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla_membresias.setSelectionBehavior(QTableWidget.SelectRows)
@@ -496,7 +623,7 @@ class DashboardView(QWidget):
         
         # Obtener total de pagos del mes
         total_mes = pago_service.calcular_total_mes()
-        self.card_pagos_mes.actualizar_valor(f"${total_mes:,.0f}")
+        self.card_pagos_mes.actualizar_valor(f"${total_mes:,.2f}")
         
         # Cargar tablas
         self.cargar_tabla_membresias()
@@ -553,11 +680,6 @@ class DashboardView(QWidget):
                 estado_item.setForeground(QColor("#F44336"))
             
             self.tabla_membresias.setItem(i, 3, estado_item)
-            
-            # Botones de acción
-            acciones_item = QTableWidgetItem("Editar ⚫⚫")
-            acciones_item.setForeground(QColor("#666"))
-            self.tabla_membresias.setItem(i, 4, acciones_item)
     
     def cargar_tabla_pagos(self):
         """Carga la tabla de últimos pagos"""
@@ -577,7 +699,7 @@ class DashboardView(QWidget):
             self.tabla_pagos.setItem(i, 1, fecha_item)
             
             # Monto - color negro
-            monto_item = QTableWidgetItem(f"${pago['monto']:,.0f}")
+            monto_item = QTableWidgetItem(f"${pago['monto']:,.2f}")
             monto_item.setForeground(QColor("#000000"))
             self.tabla_pagos.setItem(i, 2, monto_item)
             

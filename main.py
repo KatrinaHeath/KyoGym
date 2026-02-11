@@ -3,13 +3,17 @@ KyoGym - Sistema de Gestión de Gimnasio
 Aplicación de escritorio para Windows
 """
 import sys
+import os
+import ctypes
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                               QHBoxLayout, QPushButton, QStackedWidget, QLabel, QFrame)
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QIcon
+                               QHBoxLayout, QPushButton, QStackedWidget, QLabel, QFrame,
+                               QDialog, QRadioButton, QButtonGroup, QDialogButtonBox, QMessageBox)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QIcon, QPixmap
 
 # Inicializar base de datos
 from db import init_database
+from usuario_activo import obtener_usuario_activo, guardar_usuario_activo, USUARIOS
 
 # Importar vistas
 from views.dashboard_view import DashboardView
@@ -17,6 +21,7 @@ from views.membresias_view import MembresiasView
 from views.clientes_view import ClientesView
 from views.pagos_view import PagosView
 from views.inventario_view import InventarioView
+from views.configuracion_view import ConfiguracionView
 
 
 class SidebarButton(QPushButton):
@@ -44,6 +49,99 @@ class SidebarButton(QPushButton):
         """)
 
 
+class CambiarUsuarioDialog(QDialog):
+    """Diálogo para cambiar de usuario"""
+    def __init__(self, usuario_actual, parent=None):
+        super().__init__(parent)
+        self.usuario_actual = usuario_actual
+        self.setWindowTitle("Cambiar Usuario")
+        self.setMinimumWidth(350)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Estilos
+        self.setStyleSheet("""
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: #2c3e50;
+                font-size: 13px;
+            }
+            QRadioButton {
+                color: #2c3e50;
+                font-size: 13px;
+                padding: 10px;
+            }
+            QRadioButton::indicator {
+                width: 18px;
+                height: 18px;
+            }
+        """)
+        
+        # Título
+        titulo = QLabel("Seleccione el usuario activo:")
+        titulo.setFont(QFont("Arial", 12, QFont.Bold))
+        titulo.setStyleSheet("color: #2c3e50; margin-bottom: 10px;")
+        layout.addWidget(titulo)
+        
+        # Grupo de radio buttons
+        self.grupo_usuarios = QButtonGroup()
+        
+        for i, usuario in enumerate(USUARIOS):
+            radio = QRadioButton(f"👤 {usuario}")
+            radio.setStyleSheet("""
+                QRadioButton {
+                    padding: 10px;
+                    font-size: 14px;
+                }
+                QRadioButton:hover {
+                    background-color: #f0f0f0;
+                    border-radius: 5px;
+                }
+            """)
+            if usuario == self.usuario_actual:
+                radio.setChecked(True)
+            self.grupo_usuarios.addButton(radio, i)
+            layout.addWidget(radio)
+        
+        # Espacio
+        layout.addSpacing(20)
+        
+        # Botones
+        botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        botones.accepted.connect(self.accept)
+        botones.rejected.connect(self.reject)
+        botones.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        layout.addWidget(botones)
+        
+        self.setLayout(layout)
+    
+    def obtener_usuario_seleccionado(self):
+        """Retorna el usuario seleccionado"""
+        boton_seleccionado = self.grupo_usuarios.checkedButton()
+        if boton_seleccionado:
+            id_seleccionado = self.grupo_usuarios.id(boton_seleccionado)
+            return USUARIOS[id_seleccionado]
+        return None
+
+
 class MainWindow(QMainWindow):
     """Ventana principal de la aplicación"""
     def __init__(self):
@@ -52,6 +150,14 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 700)
         self.resize(1400, 800)  # Tamaño inicial más grande
         
+        # Establecer icono de la ventana
+        logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
+        
+        # Inicializar usuario activo
+        self.usuario_activo = obtener_usuario_activo()
+        
         # Inicializar base de datos
         init_database()
         
@@ -59,45 +165,59 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """Inicializa la interfaz de usuario"""
-        # Widget central
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        
-        # Layout principal (horizontal)
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        
-        # Sidebar
-        sidebar = self.crear_sidebar()
-        main_layout.addWidget(sidebar)
-        
-        # Contenedor de vistas
-        self.stack = QStackedWidget()
-        self.stack.setStyleSheet("background-color: #f5f6fa;")
-        
-        # Agregar vistas
-        self.dashboard_view = DashboardView()
-        self.membresias_view = MembresiasView()
-        self.clientes_view = ClientesView()
-        self.pagos_view = PagosView()
-        self.inventario_view = InventarioView()
-        
-        self.stack.addWidget(self.dashboard_view)
-        self.stack.addWidget(self.membresias_view)
-        self.stack.addWidget(self.clientes_view)
-        self.stack.addWidget(self.pagos_view)
-        self.stack.addWidget(self.inventario_view)
-        
-        main_layout.addWidget(self.stack)
-        
-        # Establecer proporción (sidebar : contenido = 1 : 4)
-        main_layout.setStretch(0, 1)
-        main_layout.setStretch(1, 4)
-        
-        # Mostrar dashboard por defecto
-        self.btn_inicio.setChecked(True)
-        self.stack.setCurrentWidget(self.dashboard_view)
+        try:
+            # Widget central
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            
+            # Layout principal (horizontal)
+            main_layout = QHBoxLayout(central_widget)
+            main_layout.setContentsMargins(0, 0, 0, 0)
+            main_layout.setSpacing(0)
+            
+            # Sidebar (se crea primero para tener los botones disponibles)
+            sidebar = self.crear_sidebar()
+            main_layout.addWidget(sidebar)
+            
+            # Contenedor de vistas
+            self.stack = QStackedWidget()
+            self.stack.setStyleSheet("background-color: #f5f6fa;")
+            
+            # Agregar vistas
+            print("Creando dashboard...")
+            self.dashboard_view = DashboardView()
+            print("Creando membresías...")
+            self.membresias_view = MembresiasView()
+            print("Creando clientes...")
+            self.clientes_view = ClientesView()
+            print("Creando pagos...")
+            self.pagos_view = PagosView()
+            print("Creando inventario...")
+            self.inventario_view = InventarioView()
+            print("Creando configuración...")
+            self.configuracion_view = ConfiguracionView()
+            
+            self.stack.addWidget(self.dashboard_view)
+            self.stack.addWidget(self.membresias_view)
+            self.stack.addWidget(self.clientes_view)
+            self.stack.addWidget(self.pagos_view)
+            self.stack.addWidget(self.inventario_view)
+            self.stack.addWidget(self.configuracion_view)
+            
+            main_layout.addWidget(self.stack)
+            
+            # Establecer proporción (sidebar : contenido = 1 : 4)
+            main_layout.setStretch(0, 1)
+            main_layout.setStretch(1, 4)
+            
+            # Mostrar dashboard por defecto (ahora btn_inicio ya existe)
+            self.btn_inicio.setChecked(True)
+            self.stack.setCurrentWidget(self.dashboard_view)
+            print("UI inicializada correctamente")
+        except Exception as e:
+            print(f"Error al inicializar UI: {e}")
+            import traceback
+            traceback.print_exc()
     
     def crear_sidebar(self):
         """Crea el sidebar de navegación"""
@@ -110,15 +230,31 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
         
         # Logo/Título
-        header = QLabel("KyoGym")
-        header.setFont(QFont("Arial", 20, QFont.Bold))
-        header.setStyleSheet("""
-            background-color: #1a252f;
-            color: #3498db;
-            padding: 20px;
-        """)
-        header.setAlignment(Qt.AlignCenter)
-        layout.addWidget(header)
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: #1a252f;")
+        header_layout = QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(20, 20, 20, 10)
+        header_layout.setSpacing(5)
+        
+        # Logo
+        logo_label = QLabel()
+        logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path)
+            # Escalar el logo a 80x80 píxeles manteniendo la proporción
+            scaled_pixmap = pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo_label.setPixmap(scaled_pixmap)
+            logo_label.setAlignment(Qt.AlignCenter)
+            header_layout.addWidget(logo_label)
+        
+        # Título
+        titulo = QLabel("KyoGym")
+        titulo.setFont(QFont("Arial", 18, QFont.Bold))
+        titulo.setStyleSheet("color: #3498db; background-color: transparent;")
+        titulo.setAlignment(Qt.AlignCenter)
+        header_layout.addWidget(titulo)
+        
+        layout.addWidget(header_widget)
         
         # Separador
         separador = QFrame()
@@ -148,12 +284,101 @@ class MainWindow(QMainWindow):
         # Espacio flexible
         layout.addStretch()
         
-        # Configuración (al final)
-        btn_config = SidebarButton("⚙️ Configuración")
-        btn_config.setEnabled(False)  # Deshabilitado por ahora
-        layout.addWidget(btn_config)
+        # Widget de perfil de usuario
+        perfil_widget = self.crear_widget_perfil()
+        layout.addWidget(perfil_widget)
+        
+        # Separador antes de configuración
+        separador2 = QFrame()
+        separador2.setFrameShape(QFrame.HLine)
+        separador2.setStyleSheet("background-color: #34495e;")
+        layout.addWidget(separador2)
+        
+        # Botón de configuración al final
+        self.btn_configuracion = SidebarButton("⚙️ Configuración")
+        self.btn_configuracion.clicked.connect(lambda: self.cambiar_vista(5, self.btn_configuracion))
+        layout.addWidget(self.btn_configuracion)
         
         return sidebar
+    
+    def crear_widget_perfil(self):
+        """Crea el widget de perfil de usuario"""
+        perfil_frame = QFrame()
+        perfil_frame.setStyleSheet("""
+            QFrame {
+                background-color: #1a252f;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QFrame:hover {
+                background-color: #34495e;
+            }
+        """)
+        perfil_frame.setCursor(Qt.PointingHandCursor)
+        
+        perfil_layout = QHBoxLayout(perfil_frame)
+        perfil_layout.setContentsMargins(10, 10, 10, 10)
+        perfil_layout.setSpacing(10)
+        
+        # Icono de perfil
+        icono_label = QLabel("👤")
+        icono_label.setStyleSheet("font-size: 24px; background-color: transparent;")
+        perfil_layout.addWidget(icono_label)
+        
+        # Nombre del usuario
+        self.nombre_usuario_label = QLabel(self.usuario_activo)
+        self.nombre_usuario_label.setStyleSheet("""
+            color: #ecf0f1;
+            font-size: 13px;
+            font-weight: bold;
+            background-color: transparent;
+        """)
+        self.nombre_usuario_label.setWordWrap(True)
+        perfil_layout.addWidget(self.nombre_usuario_label, 1)
+        
+        # Hacer clickeable
+        perfil_frame.mousePressEvent = lambda event: self.mostrar_dialogo_cambiar_usuario()
+        
+        return perfil_frame
+    
+    def mostrar_dialogo_cambiar_usuario(self):
+        """Muestra diálogo para cambiar de usuario"""
+        dialog = CambiarUsuarioDialog(self.usuario_activo, self)
+        if dialog.exec():
+            nuevo_usuario = dialog.obtener_usuario_seleccionado()
+            if nuevo_usuario and nuevo_usuario != self.usuario_activo:
+                self.usuario_activo = nuevo_usuario
+                guardar_usuario_activo(nuevo_usuario)
+                self.nombre_usuario_label.setText(nuevo_usuario)
+                
+                # Mensaje de confirmación
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Usuario Cambiado")
+                msg.setText(f"Usuario activo: {nuevo_usuario}")
+                msg.setStyleSheet("""
+                    QMessageBox {
+                        background-color: white;
+                    }
+                    QLabel {
+                        color: black;
+                        font-size: 13px;
+                        min-width: 300px;
+                    }
+                    QPushButton {
+                        background-color: #27ae60;
+                        color: white;
+                        padding: 8px 20px;
+                        border: none;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 13px;
+                        min-width: 80px;
+                    }
+                    QPushButton:hover {
+                        background-color: #229954;
+                    }
+                """)
+                msg.exec()
     
     def cambiar_vista(self, indice, boton):
         """Cambia la vista actual"""
@@ -163,6 +388,7 @@ class MainWindow(QMainWindow):
         self.btn_clientes.setChecked(False)
         self.btn_pagos.setChecked(False)
         self.btn_inventario.setChecked(False)
+        self.btn_configuracion.setChecked(False)
         
         # Marcar el botón actual
         boton.setChecked(True)
@@ -179,36 +405,25 @@ class MainWindow(QMainWindow):
 
 def main():
     """Función principal"""
+    # Configurar AppUserModelID para Windows (hace que el icono aparezca en la barra de tareas)
+    if sys.platform == 'win32':
+        myappid = 'kyogym.gimnasio.app.1.0'  # ID único de tu aplicación
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    
     app = QApplication(sys.argv)
+    
+    # Establecer icono de la aplicación
+    logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+    if os.path.exists(logo_path):
+        app.setWindowIcon(QIcon(logo_path))
     
     # Configurar estilo global
     app.setStyle("Fusion")
     
-    try:
-        print("[DEBUG] Creando ventana MainWindow()")
-        window = MainWindow()
-        print("[DEBUG] Llamando window.show()")
-        window.show()
-        # Intentos adicionales para asegurar que la ventana quede visible
-        window.showNormal()
-        app.processEvents()
-        print("[DEBUG] Llamando raise_() y activateWindow()")
-        window.raise_()
-        window.activateWindow()
-        # Forzar estado normal y activo
-        window.setWindowState((window.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
-        QTimer.singleShot(150, lambda: (window.raise_(), window.activateWindow()))
-        QTimer.singleShot(500, lambda: (window.raise_(), window.activateWindow()))
-
-        print("[DEBUG] Ejecutando app.exec()")
-        exit_code = app.exec()
-        print(f"[DEBUG] app.exec() finalizó con código: {exit_code}")
-        sys.exit(exit_code)
-    except Exception as e:
-        import traceback
-        print("[ERROR] Excepción en main():", e)
-        traceback.print_exc()
-        sys.exit(1)
+    window = MainWindow()
+    window.show()
+    
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

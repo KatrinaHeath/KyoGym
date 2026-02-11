@@ -3,7 +3,7 @@ from datetime import date, datetime
 from db import get_connection
 
 
-def crear_pago(cliente_id, monto, metodo, fecha_pago=None, membresia_id=None, concepto=""):
+def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto=""):
     """Registra un nuevo pago"""
     conn = get_connection()
     cursor = conn.cursor()
@@ -14,9 +14,9 @@ def crear_pago(cliente_id, monto, metodo, fecha_pago=None, membresia_id=None, co
         fecha_pago = date.fromisoformat(fecha_pago)
     
     cursor.execute("""
-        INSERT INTO pagos (cliente_id, membresia_id, fecha, monto, metodo, concepto)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (cliente_id, membresia_id, fecha_pago.isoformat(), monto, metodo, concepto))
+        INSERT INTO pagos (cliente_id, fecha, monto, metodo, concepto)
+        VALUES (?, ?, ?, ?, ?)
+    """, (cliente_id, fecha_pago.isoformat(), monto, metodo, concepto))
     
     pago_id = cursor.lastrowid
     conn.commit()
@@ -111,3 +111,33 @@ def obtener_ultimos_pagos(limite=5):
 def obtener_historial_pagos_cliente(cliente_id):
     """Obtiene todo el historial de pagos de un cliente"""
     return listar_pagos(cliente_id=cliente_id, limite=1000)
+
+
+def actualizar_pago(pago_id, cliente_id, monto, metodo, fecha_pago, concepto=""):
+    """Actualiza un pago existente"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    if isinstance(fecha_pago, date):
+        fecha_pago = fecha_pago.isoformat()
+    
+    cursor.execute("""
+        UPDATE pagos
+        SET cliente_id = ?, fecha = ?, monto = ?, metodo = ?, concepto = ?
+        WHERE id = ?
+    """, (cliente_id, fecha_pago, monto, metodo, concepto, pago_id))
+    
+    conn.commit()
+    conn.close()
+
+
+def eliminar_pago(pago_id):
+    """Elimina un pago"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM pagos WHERE id = ?", (pago_id,))
+    
+    conn.commit()
+    conn.close()
+

@@ -3,6 +3,28 @@ from datetime import date
 from db import get_connection
 
 
+def verificar_telefono_existente(telefono, excluir_id=None):
+    """Verifica si un teléfono ya está registrado para otro cliente"""
+    if not telefono or telefono.strip() == "":
+        return False
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    if excluir_id:
+        cursor.execute("""
+            SELECT id, nombre FROM clientes WHERE telefono = ? AND id != ?
+        """, (telefono, excluir_id))
+    else:
+        cursor.execute("""
+            SELECT id, nombre FROM clientes WHERE telefono = ?
+        """, (telefono,))
+    
+    cliente = cursor.fetchone()
+    conn.close()
+    return dict(cliente) if cliente else None
+
+
 def crear_cliente(nombre, telefono="", sexo="", fecha_nacimiento=None):
     """Crea un nuevo cliente"""
     conn = get_connection()
@@ -45,7 +67,7 @@ def listar_clientes(buscar="", solo_activos=True):
         query += " AND activo = 1"
     
     if buscar:
-        query += " AND (nombre LIKE ? OR telefono LIKE ?)"
+        query += " AND (nombre LIKE ? COLLATE NOCASE OR telefono LIKE ? COLLATE NOCASE)"
         buscar_param = f"%{buscar}%"
         params.extend([buscar_param, buscar_param])
     

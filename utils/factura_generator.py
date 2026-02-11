@@ -8,6 +8,11 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from datetime import datetime, date, timedelta
 import os
 from pathlib import Path
+import sys
+
+# Importar función para obtener usuario activo
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from usuario_activo import obtener_usuario_activo
 
 
 def generar_factura_membresia(membresia, cliente, ruta_salida=None):
@@ -85,7 +90,8 @@ def generar_factura_membresia(membresia, cliente, ruta_salida=None):
     
     # Atendió
     c.setFont(fuente_normal, 8)
-    atendio = "Atendió: Brayan Bernal"
+    usuario_actual = obtener_usuario_activo()
+    atendio = f"Atendió: {usuario_actual}"
     ancho_texto = c.stringWidth(atendio, fuente_normal, 8)
     x_centrado = (ancho_ticket - ancho_texto) / 2
     c.drawString(x_centrado, y_pos, atendio)
@@ -224,3 +230,175 @@ def abrir_factura(ruta_pdf):
         subprocess.run(["open", ruta_pdf])
     else:  # Linux
         subprocess.run(["xdg-open", ruta_pdf])
+
+
+def generar_factura_pago(pago, cliente, ruta_salida=None):
+    """
+    Genera una factura PDF para un pago
+    
+    Args:
+        pago: Diccionario con datos del pago (id, fecha, monto, metodo, concepto)
+        cliente: Diccionario con datos del cliente (nombre, telefono)
+        ruta_salida: Ruta donde guardar el PDF (opcional)
+    
+    Returns:
+        Ruta del archivo PDF generado
+    """
+    # Definir ruta de salida
+    if ruta_salida is None:
+        carpeta_facturas = Path.home() / "KyoGym" / "Facturas"
+        carpeta_facturas.mkdir(parents=True, exist_ok=True)
+        ruta_salida = carpeta_facturas / f"Factura_Pago_{pago['id']}.pdf"
+    
+    # Crear el documento PDF con tamaño de ticket (80mm de ancho)
+    ancho_ticket = 80 * mm
+    alto_ticket = 200 * mm
+    
+    from reportlab.pdfgen import canvas
+    c = canvas.Canvas(str(ruta_salida), pagesize=(ancho_ticket, alto_ticket))
+    
+    # Configurar fuentes
+    fuente_normal = "Helvetica"
+    fuente_bold = "Helvetica-Bold"
+    
+    # Posición inicial
+    y_pos = alto_ticket - 10 * mm
+    margen_izq = 5 * mm
+    ancho_contenido = ancho_ticket - 2 * margen_izq
+    
+    # Encabezado - Nombre del gimnasio
+    c.setFont(fuente_bold, 14)
+    nombre_gym = "KyoGym"
+    ancho_texto = c.stringWidth(nombre_gym, fuente_bold, 14)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, nombre_gym)
+    y_pos -= 5 * mm
+    
+    # Línea separadora
+    c.setLineWidth(0.5)
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 5 * mm
+    
+    # Título
+    c.setFont(fuente_bold, 12)
+    titulo = "RECIBO DE PAGO"
+    ancho_texto = c.stringWidth(titulo, fuente_bold, 12)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, titulo)
+    y_pos -= 6 * mm
+    
+    # Número de factura
+    c.setFont(fuente_normal, 9)
+    num_factura = f"Factura #{pago['id']}"
+    ancho_texto = c.stringWidth(num_factura, fuente_normal, 9)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, num_factura)
+    y_pos -= 4 * mm
+    
+    # Atendió
+    c.setFont(fuente_normal, 8)
+    usuario_actual = obtener_usuario_activo()
+    atendio = f"Atendió: {usuario_actual}"
+    ancho_texto = c.stringWidth(atendio, fuente_normal, 8)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, atendio)
+    y_pos -= 6 * mm
+    
+    # Línea separadora
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 5 * mm
+    
+    # Información del cliente
+    c.setFont(fuente_bold, 9)
+    c.drawString(margen_izq, y_pos, "Cliente:")
+    y_pos -= 4 * mm
+    
+    c.setFont(fuente_normal, 8)
+    c.drawString(margen_izq, y_pos, cliente['nombre'][:30])
+    y_pos -= 3.5 * mm
+    
+    if cliente.get('telefono'):
+        c.drawString(margen_izq, y_pos, f"Tel: {cliente['telefono']}")
+        y_pos -= 5 * mm
+    else:
+        y_pos -= 2 * mm
+    
+    # Línea separadora
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 5 * mm
+    
+    # Detalles del pago
+    c.setFont(fuente_bold, 9)
+    c.drawString(margen_izq, y_pos, "Detalles del Pago:")
+    y_pos -= 4 * mm
+    
+    c.setFont(fuente_normal, 8)
+    
+    # Fecha
+    c.drawString(margen_izq, y_pos, "Fecha:")
+    c.drawString(margen_izq + 25 * mm, y_pos, pago['fecha'])
+    y_pos -= 4 * mm
+    
+    # Método de pago
+    metodo = pago.get('metodo', pago.get('metodo_pago', 'Efectivo'))
+    c.drawString(margen_izq, y_pos, "Método:")
+    c.drawString(margen_izq + 25 * mm, y_pos, metodo)
+    y_pos -= 4 * mm
+    
+    # Concepto
+    if pago.get('concepto'):
+        c.drawString(margen_izq, y_pos, "Concepto:")
+        y_pos -= 3.5 * mm
+        # Dividir concepto en líneas si es muy largo
+        concepto = pago['concepto'][:50]
+        c.drawString(margen_izq, y_pos, concepto)
+        y_pos -= 5 * mm
+    else:
+        y_pos -= 1 * mm
+    
+    # Línea separadora
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 6 * mm
+    
+    # Monto total
+    c.setFont(fuente_bold, 12)
+    c.drawString(margen_izq, y_pos, "TOTAL:")
+    monto_texto = f"${pago['monto']:.2f}"
+    ancho_monto = c.stringWidth(monto_texto, fuente_bold, 12)
+    c.drawString(ancho_ticket - margen_izq - ancho_monto, y_pos, monto_texto)
+    y_pos -= 6 * mm
+    
+    # Línea separadora
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 5 * mm
+    
+    # Mensaje de agradecimiento
+    c.setFont(fuente_bold, 10)
+    mensaje = "Gracias por su pago"
+    ancho_texto = c.stringWidth(mensaje, fuente_bold, 10)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, mensaje)
+    y_pos -= 5 * mm
+    
+    # Fecha y hora
+    c.setFont(fuente_normal, 8)
+    fecha_hora = datetime.now().strftime("%B %d, %Y %I:%M %p")
+    # Traducir mes al español
+    meses = {
+        'January': 'Enero', 'February': 'Febrero', 'March': 'Marzo', 'April': 'Abril',
+        'May': 'Mayo', 'June': 'Junio', 'July': 'Julio', 'August': 'Agosto',
+        'September': 'Septiembre', 'October': 'Octubre', 'November': 'Noviembre', 'December': 'Diciembre'
+    }
+    for eng, esp in meses.items():
+        fecha_hora = fecha_hora.replace(eng, esp)
+    # Cambiar AM/PM a a.m./p.m.
+    fecha_hora = fecha_hora.replace('AM', 'a. m.').replace('PM', 'p. m.')
+    
+    ancho_texto = c.stringWidth(fecha_hora, fuente_normal, 8)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, fecha_hora)
+    
+    # Guardar PDF
+    c.save()
+    
+    return str(ruta_salida)

@@ -18,7 +18,7 @@ def calcular_estado_membresia(fecha_vencimiento_str):
         return ESTADO_ACTIVA
 
 
-def crear_membresia(cliente_id, tipo="Mensual", monto=0.0, fecha_inicio=None):
+def crear_membresia(cliente_id, tipo="Mensual", monto=0.0, fecha_inicio=None, pago_id=None):
     """Crea una nueva membresía para un cliente"""
     conn = get_connection()
     cursor = conn.cursor()
@@ -32,9 +32,9 @@ def crear_membresia(cliente_id, tipo="Mensual", monto=0.0, fecha_inicio=None):
     fecha_vencimiento = fecha_inicio + timedelta(days=30)
     
     cursor.execute("""
-        INSERT INTO membresias (cliente_id, tipo, fecha_inicio, fecha_vencimiento, monto)
-        VALUES (?, ?, ?, ?, ?)
-    """, (cliente_id, tipo, fecha_inicio.isoformat(), fecha_vencimiento.isoformat(), monto))
+        INSERT INTO membresias (cliente_id, tipo, fecha_inicio, fecha_vencimiento, monto, pago_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (cliente_id, tipo, fecha_inicio.isoformat(), fecha_vencimiento.isoformat(), monto, pago_id))
     
     membresia_id = cursor.lastrowid
     conn.commit()
@@ -138,3 +138,36 @@ def obtener_proximas_a_vencer(limite=10):
     membresias.sort(key=lambda x: x['fecha_vencimiento'])
     
     return membresias[:limite]
+
+
+def actualizar_membresia(membresia_id, cliente_id, tipo, fecha_inicio, monto):
+    """Actualiza una membresía existente"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    if isinstance(fecha_inicio, str):
+        fecha_inicio = date.fromisoformat(fecha_inicio)
+    
+    # Recalcular fecha de vencimiento
+    fecha_vencimiento = fecha_inicio + timedelta(days=30)
+    
+    cursor.execute("""
+        UPDATE membresias
+        SET cliente_id = ?, tipo = ?, fecha_inicio = ?, fecha_vencimiento = ?, monto = ?
+        WHERE id = ?
+    """, (cliente_id, tipo, fecha_inicio.isoformat(), fecha_vencimiento.isoformat(), monto, membresia_id))
+    
+    conn.commit()
+    conn.close()
+
+
+def eliminar_membresia(membresia_id):
+    """Elimina una membresía"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM membresias WHERE id = ?", (membresia_id,))
+    
+    conn.commit()
+    conn.close()
+
