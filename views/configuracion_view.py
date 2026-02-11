@@ -112,6 +112,13 @@ class ConfiguracionView(QWidget):
         layout.addStretch()
         
         main_layout.addWidget(scroll)
+        
+        # Forzar color negro global en QLabel para mejor legibilidad
+        self.setStyleSheet("""
+            QLabel {
+                color: #000000;
+            }
+        """)
     
     def crear_grupo_gimnasio(self):
         """Crea el grupo de información del gimnasio"""
@@ -120,9 +127,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #2c3e50;
+                color: #000000;
                 background-color: white;
-                border: 2px solid #3498db;
+                border: 2px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -179,9 +186,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #2c3e50;
+                color: #000000;
                 background-color: white;
-                border: 2px solid #9b59b6;
+                border: 2px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -274,9 +281,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #2c3e50;
+                color: #000000;
                 background-color: white;
-                border: 2px solid #e74c3c;
+                border: 2px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -329,9 +336,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #2c3e50;
+                color: #000000;
                 background-color: white;
-                border: 2px solid #f39c12;
+                border: 2px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -374,9 +381,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #2c3e50;
+                color: #000000;
                 background-color: white;
-                border: 2px solid #16a085;
+                border: 2px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -416,12 +423,23 @@ class ConfiguracionView(QWidget):
                 border: 2px solid #e0e0e0;
                 border-radius: 6px;
                 background-color: white;
-                color: #2c3e50;
+                color: #000000;
                 font-size: 13px;
             }
             QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
                 border: 2px solid #3498db;
-            }            QCalendarWidget QAbstractItemView {
+            }
+            /* Forzar color de los items en los desplegables */
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #000000;
+                selection-background-color: #3498db;
+                selection-color: white;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #000000;
+            }
+            QCalendarWidget QAbstractItemView {
                 selection-background-color: #3498db;
                 selection-color: black;
                 color: black;
@@ -449,13 +467,14 @@ class ConfiguracionView(QWidget):
             }
             QPushButton {
                 color: black;
-            }        """)
+            }
+        """)
     
     def aplicar_estilo_checkbox(self, checkbox):
         """Aplica estilo a los checkboxes"""
         checkbox.setStyleSheet("""
             QCheckBox {
-                color: #2c3e50;
+                color: #000000;
                 font-size: 13px;
                 spacing: 8px;
             }

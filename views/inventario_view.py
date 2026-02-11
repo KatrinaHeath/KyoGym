@@ -37,11 +37,18 @@ class AgregarProductoDialog(QDialog):
                 border: 2px solid #e0e0e0;
                 border-radius: 4px;
                 background-color: white;
-                color: #2c3e50;
+                color: #000000;
                 font-size: 13px;
             }
             QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
                 border: 2px solid #3498db;
+            }
+            /* Forzar color en el popup de los QComboBox */
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #000000;
+                selection-background-color: #3498db;
+                selection-color: white;
             }
             QPushButton {
                 color: black;
@@ -281,8 +288,8 @@ class InventarioView(QWidget):
         
         # Tabla de inventario
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(6)
-        self.tabla.setHorizontalHeaderLabels(["Nombre", "Categoría", "Cantidad", "Precio", "Valor Total", "Acciones"])
+        self.tabla.setColumnCount(5)
+        self.tabla.setHorizontalHeaderLabels(["Nombre", "Categoría", "Cantidad", "Precio", "Acciones"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
@@ -345,13 +352,7 @@ class InventarioView(QWidget):
             # Precio
             precio_item = QTableWidgetItem(f"${producto['precio']:.2f}")
             self.tabla.setItem(i, 3, precio_item)
-            
-            # Valor Total
-            valor_total = producto['cantidad'] * producto['precio']
-            valor_item = QTableWidgetItem(f"${valor_total:.2f}")
-            valor_item.setForeground(QColor("#27ae60"))
-            self.tabla.setItem(i, 4, valor_item)
-            
+
             # Botones de acciones
             acciones_widget = QWidget()
             acciones_layout = QHBoxLayout(acciones_widget)
@@ -396,7 +397,7 @@ class InventarioView(QWidget):
             btn_eliminar.clicked.connect(lambda checked, pid=producto['id']: self.eliminar_producto(pid))
             acciones_layout.addWidget(btn_eliminar)
             
-            self.tabla.setCellWidget(i, 5, acciones_widget)
+            self.tabla.setCellWidget(i, 4, acciones_widget)
     
     def cambiar_filtro_categoria(self, categoria, boton_activo):
         """Cambia el filtro de categoría"""

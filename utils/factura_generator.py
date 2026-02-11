@@ -53,16 +53,36 @@ def generar_factura_membresia(membresia, cliente, ruta_salida=None):
     margen_izq = 5 * mm
     ancho_contenido = ancho_ticket - 2 * margen_izq
     
-    # Logo (si existe)
-    # Buscar logo en la carpeta del proyecto
-    logo_path = Path(__file__).parent.parent / "logo.png"
+    # Logo circular (si existe)
+    # Buscar logo2 en assets
+    logo_path = Path(__file__).parent.parent / "assets" / "logo2.png"
     if logo_path.exists():
-        # Calcular tamaño proporcional
-        img_width = 25 * mm
-        img_height = 25 * mm
+        # Crear un logo circular
+        from PIL import Image, ImageDraw
+        img_size = 200
+        # Abrir imagen
+        img = Image.open(str(logo_path)).convert('RGBA')
+        img = img.resize((img_size, img_size), Image.Resampling.LANCZOS)
+        # Crear máscara circular
+        mask = Image.new('L', (img_size, img_size), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse([0, 0, img_size, img_size], fill=255)
+        # Aplicar máscara
+        img.putalpha(mask)
+        # Guardar temporalmente
+        temp_logo = Path(__file__).parent.parent / ".temp_logo_circular.png"
+        img.save(str(temp_logo))
+        # Dibujar en PDF
+        img_width = 20 * mm
+        img_height = 20 * mm
         x_logo = (ancho_ticket - img_width) / 2
-        c.drawImage(str(logo_path), x_logo, y_pos - img_height, width=img_width, height=img_height)
-        y_pos -= img_height + 3 * mm
+        c.drawImage(str(temp_logo), x_logo, y_pos - img_height, width=img_width, height=img_height, mask='auto')
+        y_pos -= img_height + 5 * mm
+        # Limpiar temporal
+        try:
+            temp_logo.unlink()
+        except:
+            pass
     
     # Título "Kyo-Gym"
     c.setFont(fuente_bold, 16)
@@ -234,7 +254,7 @@ def abrir_factura(ruta_pdf):
 
 def generar_factura_pago(pago, cliente, ruta_salida=None):
     """
-    Genera una factura PDF para un pago
+    Genera una factura PDF para un pago (mismo diseño que membresía)
     
     Args:
         pago: Diccionario con datos del pago (id, fecha, monto, metodo, concepto)
@@ -248,7 +268,7 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     if ruta_salida is None:
         carpeta_facturas = Path.home() / "KyoGym" / "Facturas"
         carpeta_facturas.mkdir(parents=True, exist_ok=True)
-        ruta_salida = carpeta_facturas / f"Factura_Pago_{pago['id']}.pdf"
+        ruta_salida = carpeta_facturas / f"Factura_{pago['id']}.pdf"
     
     # Crear el documento PDF con tamaño de ticket (80mm de ancho)
     ancho_ticket = 80 * mm
@@ -266,33 +286,59 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     margen_izq = 5 * mm
     ancho_contenido = ancho_ticket - 2 * margen_izq
     
-    # Encabezado - Nombre del gimnasio
-    c.setFont(fuente_bold, 14)
-    nombre_gym = "KyoGym"
-    ancho_texto = c.stringWidth(nombre_gym, fuente_bold, 14)
-    x_centrado = (ancho_ticket - ancho_texto) / 2
-    c.drawString(x_centrado, y_pos, nombre_gym)
-    y_pos -= 5 * mm
+    # Logo circular (si existe)
+    # Buscar logo2 en assets
+    logo_path = Path(__file__).parent.parent / "assets" / "logo2.png"
+    if logo_path.exists():
+        # Crear un logo circular
+        from PIL import Image, ImageDraw
+        img_size = 200
+        # Abrir imagen
+        img = Image.open(str(logo_path)).convert('RGBA')
+        img = img.resize((img_size, img_size), Image.Resampling.LANCZOS)
+        # Crear máscara circular
+        mask = Image.new('L', (img_size, img_size), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse([0, 0, img_size, img_size], fill=255)
+        # Aplicar máscara
+        img.putalpha(mask)
+        # Guardar temporalmente
+        temp_logo = Path(__file__).parent.parent / ".temp_logo_circular.png"
+        img.save(str(temp_logo))
+        # Dibujar en PDF
+        img_width = 20 * mm
+        img_height = 20 * mm
+        x_logo = (ancho_ticket - img_width) / 2
+        c.drawImage(str(temp_logo), x_logo, y_pos - img_height, width=img_width, height=img_height, mask='auto')
+        y_pos -= img_height + 5 * mm
+        # Limpiar temporal
+        try:
+            temp_logo.unlink()
+        except:
+            pass
     
-    # Línea separadora
-    c.setLineWidth(0.5)
-    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
-    y_pos -= 5 * mm
-    
-    # Título
-    c.setFont(fuente_bold, 12)
-    titulo = "RECIBO DE PAGO"
-    ancho_texto = c.stringWidth(titulo, fuente_bold, 12)
+    # Título "Kyo-Gym"
+    c.setFont(fuente_bold, 16)
+    texto = "Kyo-Gym"
+    ancho_texto = c.stringWidth(texto, fuente_bold, 16)
     x_centrado = (ancho_ticket - ancho_texto) / 2
-    c.drawString(x_centrado, y_pos, titulo)
+    c.drawString(x_centrado, y_pos, texto)
     y_pos -= 6 * mm
     
-    # Número de factura
-    c.setFont(fuente_normal, 9)
-    num_factura = f"Factura #{pago['id']}"
-    ancho_texto = c.stringWidth(num_factura, fuente_normal, 9)
+    # Número de factura (ID de pago)
+    c.setFont(fuente_bold, 14)
+    numero_factura = f"#{pago['id']}"
+    ancho_texto = c.stringWidth(numero_factura, fuente_bold, 14)
     x_centrado = (ancho_ticket - ancho_texto) / 2
-    c.drawString(x_centrado, y_pos, num_factura)
+    c.drawString(x_centrado, y_pos, numero_factura)
+    y_pos -= 6 * mm
+    
+    # Información del gimnasio
+    c.setFont(fuente_normal, 8)
+    info_gym = "63858851"
+    ancho_texto = c.stringWidth(info_gym, fuente_normal, 8)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, info_gym)
     y_pos -= 4 * mm
     
     # Atendió
@@ -304,69 +350,93 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     c.drawString(x_centrado, y_pos, atendio)
     y_pos -= 6 * mm
     
-    # Línea separadora
-    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    # Nombre del cliente
+    c.setFont(fuente_bold, 10)
+    c.drawString(margen_izq, y_pos, cliente['nombre'])
     y_pos -= 5 * mm
     
-    # Información del cliente
-    c.setFont(fuente_bold, 9)
-    c.drawString(margen_izq, y_pos, "Cliente:")
-    y_pos -= 4 * mm
-    
+    # Teléfono
     c.setFont(fuente_normal, 8)
-    c.drawString(margen_izq, y_pos, cliente['nombre'][:30])
-    y_pos -= 3.5 * mm
-    
     if cliente.get('telefono'):
-        c.drawString(margen_izq, y_pos, f"Tel: {cliente['telefono']}")
-        y_pos -= 5 * mm
-    else:
-        y_pos -= 2 * mm
+        c.drawString(margen_izq, y_pos, cliente['telefono'])
+        y_pos -= 6 * mm
     
     # Línea separadora
+    y_pos -= 2 * mm
     c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
     y_pos -= 5 * mm
     
-    # Detalles del pago
+    # Encabezado de artículos
     c.setFont(fuente_bold, 9)
-    c.drawString(margen_izq, y_pos, "Detalles del Pago:")
-    y_pos -= 4 * mm
-    
-    c.setFont(fuente_normal, 8)
-    
-    # Fecha
-    c.drawString(margen_izq, y_pos, "Fecha:")
-    c.drawString(margen_izq + 25 * mm, y_pos, pago['fecha'])
-    y_pos -= 4 * mm
-    
-    # Método de pago
-    metodo = pago.get('metodo', pago.get('metodo_pago', 'Efectivo'))
-    c.drawString(margen_izq, y_pos, "Método:")
-    c.drawString(margen_izq + 25 * mm, y_pos, metodo)
-    y_pos -= 4 * mm
-    
-    # Concepto
-    if pago.get('concepto'):
-        c.drawString(margen_izq, y_pos, "Concepto:")
-        y_pos -= 3.5 * mm
-        # Dividir concepto en líneas si es muy largo
-        concepto = pago['concepto'][:50]
-        c.drawString(margen_izq, y_pos, concepto)
-        y_pos -= 5 * mm
-    else:
-        y_pos -= 1 * mm
-    
-    # Línea separadora
-    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    c.drawString(margen_izq, y_pos, f"1 artículos (Cant.: 1)")
     y_pos -= 6 * mm
     
-    # Monto total
-    c.setFont(fuente_bold, 12)
-    c.drawString(margen_izq, y_pos, "TOTAL:")
+    # Línea separadora
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 5 * mm
+    
+    # Artículo: Pago
+    c.setFont(fuente_normal, 9)
+    concepto = pago.get('concepto', 'Pago')
+    c.drawString(margen_izq, y_pos, f"1x  {concepto}")
     monto_texto = f"${pago['monto']:.2f}"
-    ancho_monto = c.stringWidth(monto_texto, fuente_bold, 12)
+    ancho_monto = c.stringWidth(monto_texto, fuente_normal, 9)
     c.drawString(ancho_ticket - margen_izq - ancho_monto, y_pos, monto_texto)
     y_pos -= 6 * mm
+    
+    # Fecha del pago
+    c.setFont(fuente_normal, 7)
+    fecha_pago = pago.get('fecha', datetime.now().strftime('%d/%m/%Y'))
+    fecha_texto = f"Cobranza: {fecha_pago}"
+    ancho_texto = c.stringWidth(fecha_texto, fuente_normal, 7)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, fecha_texto)
+    y_pos -= 6 * mm
+    
+    # Método de pago
+    c.setFont(fuente_normal, 7)
+    metodo = pago.get('metodo', 'Efectivo')
+    metodo_texto = f"Método: {metodo}"
+    ancho_texto = c.stringWidth(metodo_texto, fuente_normal, 7)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, metodo_texto)
+    y_pos -= 6 * mm
+    
+    # Línea separadora
+    c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
+    y_pos -= 5 * mm
+    
+    # Subtotal
+    c.setFont(fuente_normal, 9)
+    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Subtotal:")
+    subtotal_texto = f"${pago['monto']:.2f}"
+    ancho_subtotal = c.stringWidth(subtotal_texto, fuente_normal, 9)
+    c.drawString(ancho_ticket - margen_izq - ancho_subtotal, y_pos, subtotal_texto)
+    y_pos -= 5 * mm
+    
+    # Total
+    c.setFont(fuente_bold, 12)
+    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Total:")
+    total_texto = f"${pago['monto']:.2f}"
+    ancho_total = c.stringWidth(total_texto, fuente_bold, 12)
+    c.drawString(ancho_ticket - margen_izq - ancho_total, y_pos, total_texto)
+    y_pos -= 6 * mm
+    
+    # Efectivo
+    c.setFont(fuente_normal, 9)
+    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Efectivo:")
+    efectivo_texto = f"${pago['monto']:.2f}"
+    ancho_efectivo = c.stringWidth(efectivo_texto, fuente_normal, 9)
+    c.drawString(ancho_ticket - margen_izq - ancho_efectivo, y_pos, efectivo_texto)
+    y_pos -= 5 * mm
+    
+    # Cambio
+    c.setFont(fuente_normal, 9)
+    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Cambio:")
+    cambio_texto = "$0.00"
+    ancho_cambio = c.stringWidth(cambio_texto, fuente_normal, 9)
+    c.drawString(ancho_ticket - margen_izq - ancho_cambio, y_pos, cambio_texto)
+    y_pos -= 8 * mm
     
     # Línea separadora
     c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
@@ -374,7 +444,7 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     
     # Mensaje de agradecimiento
     c.setFont(fuente_bold, 10)
-    mensaje = "Gracias por su pago"
+    mensaje = "Gracias por su compra"
     ancho_texto = c.stringWidth(mensaje, fuente_bold, 10)
     x_centrado = (ancho_ticket - ancho_texto) / 2
     c.drawString(x_centrado, y_pos, mensaje)
