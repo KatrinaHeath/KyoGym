@@ -8,6 +8,8 @@ from services import membresia_service, pago_service, cliente_service
 from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA
 from datetime import date
 import math
+from services.inventario_service import obtener_stock_bajo
+
 
 
 class SimpleBarChart(QWidget):
@@ -361,11 +363,15 @@ class DashboardView(QWidget):
         self.card_por_vencer = MetricCard("Membresías por Vencer", "0", "#FF9800", "⏰")
         self.card_vencidas = MetricCard("Membresías Vencidas", "0", "#F44336", "❌")
         self.card_pagos_mes = MetricCard("Pagos del Mes", "$0", "#2196F3", "💵")
+        self.card_stock_bajo = MetricCard("Stock Bajo", "0", "#E74C3C", "⚠")
+
         
         metricas_layout.addWidget(self.card_activas)
         metricas_layout.addWidget(self.card_por_vencer)
         metricas_layout.addWidget(self.card_vencidas)
         metricas_layout.addWidget(self.card_pagos_mes)
+        metricas_layout.addWidget(self.card_stock_bajo)
+
         
         layout.addLayout(metricas_layout)
         
@@ -625,6 +631,17 @@ class DashboardView(QWidget):
         # Obtener total de pagos del mes
         total_mes = pago_service.calcular_total_mes()
         self.card_pagos_mes.actualizar_valor(f"${total_mes:,.2f}")
+
+        # Stock bajo
+        productos_bajo = obtener_stock_bajo()
+        cantidad_bajo = len(productos_bajo)
+        self.card_stock_bajo.actualizar_valor(cantidad_bajo)
+
+        if cantidad_bajo > 0:
+         self.card_stock_bajo.label_valor.setStyleSheet("color: #E74C3C; font-size: 28px; font-weight: bold;")
+        else:
+         self.card_stock_bajo.label_valor.setStyleSheet("color: #2ECC71; font-size: 28px; font-weight: bold;")
+
         
         # Cargar tablas
         self.cargar_tabla_membresias()
