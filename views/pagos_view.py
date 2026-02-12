@@ -2,8 +2,8 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                                QTableWidget, QTableWidgetItem, QHeaderView, QLabel,
                                QDialog, QFormLayout, QLineEdit, QDateEdit, QComboBox,
-                               QMessageBox, QDialogButtonBox, QCompleter)
-from PySide6.QtCore import Qt, QDate, QSortFilterProxyModel
+                               QMessageBox, QDialogButtonBox)
+from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QColor
 from datetime import date
 from services import pago_service, cliente_service, membresia_service
@@ -107,16 +107,7 @@ class RegistrarPagoDialog(QDialog):
         
         # Selector de cliente
         self.combo_cliente = QComboBox()
-        self.combo_cliente.setEditable(True)  # Hacer editable para escribir
-        self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)  # No insertar nuevos items
         self.cargar_clientes()
-        
-        # Configurar autocompletado
-        completer = self.combo_cliente.completer()
-        if completer:
-            completer.setCompletionMode(QCompleter.PopupCompletion)
-            completer.setCaseSensitivity(Qt.CaseInsensitive)
-            completer.setFilterMode(Qt.MatchContains)  # Buscar en cualquier parte del texto
         
         layout.addRow("Cliente:", self.combo_cliente)
         

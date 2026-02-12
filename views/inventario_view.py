@@ -62,7 +62,6 @@ class AgregarProductoDialog(QDialog):
         
         # Categoría
         self.categoria = QComboBox()
-        self.categoria.setEditable(True)
         categorias_existentes = inventario_service.obtener_categorias()
         self.categoria.addItems(["Suplementos", "Equipamiento", "Accesorios", "Bebidas", "Otros"])
         if categorias_existentes:
