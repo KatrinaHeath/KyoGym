@@ -1,7 +1,7 @@
 """Vista del Dashboard con métricas y próximas a vencer"""
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                                QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
-                               QLineEdit, QPushButton)
+                               QPushButton)
 from PySide6.QtCore import Qt, QTimer, QRect
 from PySide6.QtGui import QFont, QPainter, QColor, QPen, QBrush
 from services import membresia_service, pago_service, cliente_service
@@ -323,7 +323,7 @@ class DashboardView(QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Header con título y búsqueda
+        # Header con título
         header_layout = QHBoxLayout()
         
         titulo = QLabel("Dashboard")
@@ -332,26 +332,6 @@ class DashboardView(QWidget):
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
-        
-        # Búsqueda
-        self.busqueda = QLineEdit()
-        self.busqueda.setPlaceholderText("Buscar...")
-        self.busqueda.setMinimumWidth(250)
-        self.busqueda.setMaximumWidth(400)
-        self.busqueda.setStyleSheet("""
-            QLineEdit {
-                padding: 8px 15px;
-                border: 2px solid #e0e0e0;
-                border-radius: 20px;
-                font-size: 13px;
-                background-color: white;
-                color: black;
-            }
-            QLineEdit:focus {
-                border: 2px solid #3498db;
-            }
-        """)
-        header_layout.addWidget(self.busqueda)
         
         layout.addLayout(header_layout)
         
