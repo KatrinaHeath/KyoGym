@@ -7,8 +7,10 @@ from PySide6.QtCore import Qt, QDate, QSortFilterProxyModel
 from PySide6.QtGui import QFont, QColor
 from datetime import date
 from services import pago_service, cliente_service, membresia_service
+from services import inventario_service
 from utils.factura_generator import generar_factura_pago, abrir_factura
 from pathlib import Path
+
 
 
 class RegistrarPagoDialog(QDialog):
@@ -141,10 +143,28 @@ class RegistrarPagoDialog(QDialog):
         self.metodo.addItems(["Efectivo", "Tarjeta", "Transferencia", "Otro"])
         layout.addRow("Método:", self.metodo)
         
-        # Concepto
-        self.concepto = QLineEdit()
-        self.concepto.setPlaceholderText("Membresía mensual, renovación, etc.")
+        # Concepto (Tipo)
+        self.concepto = QComboBox()
+        self.concepto.addItems(["Pago de día", "Producto"])
         layout.addRow("Concepto:", self.concepto)
+
+        # Selector de producto (oculto por defecto)
+        self.combo_producto = QComboBox()
+        self.combo_producto.setVisible(False)
+        layout.addRow("Producto:", self.combo_producto)
+
+        # Campo cantidad (oculto por defecto)
+        self.input_cantidad = QLineEdit()
+        self.input_cantidad.setPlaceholderText("Cantidad")
+        self.input_cantidad.setVisible(False)
+        layout.addRow("Cantidad:", self.input_cantidad)
+
+        # Cargar productos
+        self.cargar_productos()
+
+        # Detectar cambio de concepto
+        self.concepto.currentTextChanged.connect(self.toggle_producto_fields)
+
         
         # Botones
         botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -161,6 +181,20 @@ class RegistrarPagoDialog(QDialog):
         
         for cliente in clientes:
             self.combo_cliente.addItem(cliente['nombre'], cliente['id'])
+
+    def cargar_productos(self):
+        """Carga productos en el combo"""
+        productos = inventario_service.listar_productos()
+        self.combo_producto.clear()
+
+        for producto in productos:
+            self.combo_producto.addItem(producto['nombre'], producto['id'])
+
+    def toggle_producto_fields(self, texto):
+        """Muestra u oculta campos según concepto"""
+        es_producto = texto == "Producto"
+        self.combo_producto.setVisible(es_producto)
+        self.input_cantidad.setVisible(es_producto)
     
     def cargar_datos_pago(self):
         """Carga los datos del pago a editar"""
@@ -261,14 +295,30 @@ class RegistrarPagoDialog(QDialog):
         """Retorna los datos ingresados"""
         fecha = self.fecha.date()
         cliente_id = self.combo_cliente.currentData()
-        
-        return {
+        concepto_texto = self.concepto.currentText()
+
+        datos = {
             'cliente_id': cliente_id,
             'fecha': date(fecha.year(), fecha.month(), fecha.day()),
             'monto': float(self.monto.text()),
             'metodo': self.metodo.currentText(),
-            'concepto': self.concepto.text()
+            'concepto': concepto_texto
         }
+
+        if concepto_texto == "Producto":
+            producto_id = self.combo_producto.currentData()
+            try:
+                cantidad = int(self.input_cantidad.text())
+                if cantidad <= 0:
+                    raise ValueError()
+            except:
+                QMessageBox.warning(self, "Error", "Cantidad inválida")
+                return {}
+
+            datos['producto_id'] = producto_id
+            datos['cantidad'] = cantidad
+
+        return datos
 
 
 class PagosView(QWidget):
@@ -599,13 +649,26 @@ class PagosView(QWidget):
         dialog = RegistrarPagoDialog(self)
         if dialog.exec():
             datos = dialog.obtener_datos()
-            pago_id = pago_service.crear_pago(
+            
+            if not datos:
+                return
+            
+            ok, resultado = pago_service.crear_pago(
                 cliente_id=datos['cliente_id'],
                 fecha_pago=datos['fecha'],
                 monto=datos['monto'],
                 metodo=datos['metodo'],
-                concepto=datos['concepto']
+                concepto=datos['concepto'],
+                producto_id=datos.get('producto_id'),
+                cantidad=datos.get('cantidad', 1)
             )
+
+            if not ok:
+                QMessageBox.warning(self, "Error", resultado)
+                return
+
+            pago_id = resultado
+
             
             # Generar factura
             pago = pago_service.obtener_pago(pago_id)

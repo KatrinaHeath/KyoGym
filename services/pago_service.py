@@ -1,27 +1,39 @@
 """Servicio CRUD para pagos"""
 from datetime import date, datetime
 from db import get_connection
+from services.inventario_service import vender_producto
 
 
-def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto=""):
-    """Registra un nuevo pago"""
+def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto="", producto_id=None, cantidad=1):
+    """Registra un nuevo pago y descuenta inventario si es producto"""
+
+    # Si es venta de producto, descontar primero
+    if concepto == "Producto":
+        if not producto_id:
+            return False, "Debe seleccionar un producto"
+
+        ok, mensaje = vender_producto(producto_id, cantidad)
+
+        if not ok:
+            return False, mensaje  # No registrar pago si falla stock
+
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     if fecha_pago is None:
         fecha_pago = date.today()
     elif isinstance(fecha_pago, str):
         fecha_pago = date.fromisoformat(fecha_pago)
-    
+
     cursor.execute("""
         INSERT INTO pagos (cliente_id, fecha, monto, metodo, concepto)
         VALUES (?, ?, ?, ?, ?)
     """, (cliente_id, fecha_pago.isoformat(), monto, metodo, concepto))
-    
+
     pago_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return pago_id
+    return True, pago_id
 
 
 def obtener_pago(pago_id):
