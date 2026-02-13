@@ -103,6 +103,19 @@ def init_database():
         ON inventario(categoria)
     """)
     
+        # Tabla de historial de movimientos de inventario
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventario_movimientos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            producto_id INTEGER NOT NULL,
+            tipo TEXT NOT NULL,
+            cantidad INTEGER NOT NULL,
+            motivo TEXT,
+            fecha DATE DEFAULT (DATE('now')),
+            FOREIGN KEY (producto_id) REFERENCES inventario(id) ON DELETE CASCADE
+        )
+    """)
+
     conn.commit()
     conn.close()
     

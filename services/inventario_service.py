@@ -158,3 +158,78 @@ def productos_bajo_stock(minimo=5):
     conn.close()
     
     return [dict(producto) for producto in productos]
+
+def vender_producto(producto_id, cantidad, motivo="Venta de producto"):
+    """Descuenta inventario y registra movimiento automáticamente"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Obtener stock actual
+    cursor.execute("SELECT cantidad FROM inventario WHERE id = ?", (producto_id,))
+    producto = cursor.fetchone()
+
+    if not producto:
+        conn.close()
+        return False, "Producto no existe"
+
+    stock_actual = producto["cantidad"]
+
+    if stock_actual < cantidad:
+        conn.close()
+        return False, "Stock insuficiente"
+
+    # Descontar inventario
+    nuevo_stock = stock_actual - cantidad
+    cursor.execute("""
+        UPDATE inventario
+        SET cantidad = ?
+        WHERE id = ?
+    """, (nuevo_stock, producto_id))
+
+    # Registrar movimiento en historial
+    cursor.execute("""
+        INSERT INTO inventario_movimientos (producto_id, tipo, cantidad, motivo)
+        VALUES (?, 'SALIDA', ?, ?)
+    """, (producto_id, cantidad, motivo))
+
+    conn.commit()
+    conn.close()
+
+    return True, "Venta registrada correctamente"
+
+def agregar_stock(producto_id, cantidad, motivo="Ingreso de stock"):
+    """Aumenta inventario y registra movimiento"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Aumentar inventario
+    cursor.execute("""
+        UPDATE inventario
+        SET cantidad = cantidad + ?
+        WHERE id = ?
+    """, (cantidad, producto_id))
+
+    # Registrar movimiento
+    cursor.execute("""
+        INSERT INTO inventario_movimientos (producto_id, tipo, cantidad, motivo)
+        VALUES (?, 'ENTRADA', ?, ?)
+    """, (producto_id, cantidad, motivo))
+
+    conn.commit()
+    conn.close()
+
+def obtener_stock_bajo():
+    from db import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, nombre, cantidad, stock_minimo
+        FROM inventario
+        WHERE cantidad <= stock_minimo
+    """)
+
+    productos = cursor.fetchall()
+    conn.close()
+    return productos
+
