@@ -16,42 +16,42 @@ def agregar_datos_prueba():
     cliente1 = crear_cliente("Juan Pérez", "6789-0123", "Masculino", "1990-05-15")
     fecha_inicio1 = date.today() - timedelta(days=10)
     membresia1 = crear_membresia(cliente1, "Mensual", 50.0, fecha_inicio1)
-    crear_pago(cliente1, 50.0, "Efectivo", fecha_inicio1, membresia1, "Membresía mensual")
+    crear_pago(cliente1, 50.0, "Efectivo", fecha_inicio1, concepto="Membresía mensual")
     print(f"✓ Juan Pérez - Membresía activa")
     
     # Cliente 2: Membresía por vencer
     cliente2 = crear_cliente("Ana Gómez", "3456-7890", "Femenino", "1995-08-22")
     fecha_inicio2 = date.today() - timedelta(days=25)
     membresia2 = crear_membresia(cliente2, "Mensual", 50.0, fecha_inicio2)
-    crear_pago(cliente2, 50.0, "Tarjeta", fecha_inicio2, membresia2, "Pago mensual")
+    crear_pago(cliente2, 50.0, "Tarjeta", fecha_inicio2, concepto="Pago mensual")
     print(f"✓ Ana Gómez - Membresía por vencer (5 días)")
     
     # Cliente 3: Membresía vencida
     cliente3 = crear_cliente("Carlos Ruiz", "1234-5678", "Masculino", "1988-03-10")
     fecha_inicio3 = date.today() - timedelta(days=35)
     membresia3 = crear_membresia(cliente3, "Mensual", 50.0, fecha_inicio3)
-    crear_pago(cliente3, 50.0, "Efectivo", fecha_inicio3, membresia3, "Renovación")
+    crear_pago(cliente3, 50.0, "Efectivo", fecha_inicio3, concepto="Renovación")
     print(f"✓ Carlos Ruiz - Membresía vencida")
     
     # Cliente 4: Membresía activa
     cliente4 = crear_cliente("Luis Torres", "2345-6789", "Masculino", "1992-11-30")
     fecha_inicio4 = date.today() - timedelta(days=8)
     membresia4 = crear_membresia(cliente4, "Mensual", 50.0, fecha_inicio4)
-    crear_pago(cliente4, 50.0, "Efectivo", fecha_inicio4, membresia4)
+    crear_pago(cliente4, 50.0, "Efectivo", fecha_inicio4, concepto="Pago membresía")
     print(f"✓ Luis Torres - Membresía activa")
     
     # Cliente 5: Membresía activa
     cliente5 = crear_cliente("María León", "4567-8901", "Femenino", "1993-07-18")
     fecha_inicio5 = date.today() - timedelta(days=15)
     membresia5 = crear_membresia(cliente5, "Mensual", 40.0, fecha_inicio5)
-    crear_pago(cliente5, 40.0, "Tarjeta", fecha_inicio5, membresia5, "Membresía mensual")
+    crear_pago(cliente5, 40.0, "Tarjeta", fecha_inicio5, concepto="Membresía mensual")
     print(f"✓ María León - Membresía activa")
     
     # Cliente 6: Membresía por vencer
     cliente6 = crear_cliente("Pedro Soto", "5678-9012", "Masculino", "1985-12-05")
     fecha_inicio6 = date.today() - timedelta(days=27)
     membresia6 = crear_membresia(cliente6, "Mensual", 50.0, fecha_inicio6)
-    crear_pago(cliente6, 50.0, "Transferencia", fecha_inicio6, membresia6)
+    crear_pago(cliente6, 50.0, "Transferencia", fecha_inicio6, concepto="Pago membresía")
     print(f"✓ Pedro Soto - Membresía por vencer (3 días)")
     
     # Cliente 7: Sin membresía (solo para mostrar en la gráfica de sexo)

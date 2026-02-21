@@ -2,13 +2,14 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                                QTableWidget, QTableWidgetItem, QHeaderView, QLabel,
                                QDialog, QFormLayout, QLineEdit, QDateEdit, QComboBox,
-                               QMessageBox, QDialogButtonBox)
-from PySide6.QtCore import Qt, QDate
+                               QMessageBox, QDialogButtonBox, QCompleter)
+from PySide6.QtCore import Qt, QDate, QSortFilterProxyModel
 from PySide6.QtGui import QFont, QColor
 from datetime import date
 from services import pago_service, cliente_service, membresia_service
 from services import inventario_service
 from utils.factura_generator import generar_factura_pago, abrir_factura
+from utils.validators import crear_validador_numerico_decimal, crear_validador_entero
 from pathlib import Path
 
 
@@ -107,10 +108,11 @@ class RegistrarPagoDialog(QDialog):
             }
         """)
         
-        # Selector de cliente
+        # Selector de cliente con autocompletado
         self.combo_cliente = QComboBox()
+        self.combo_cliente.setEditable(True)  # Hacer editable para escribir
+        self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)  # No insertar nuevos items
         self.cargar_clientes()
-        
         layout.addRow("Cliente:", self.combo_cliente)
         
         # Fecha
@@ -122,11 +124,7 @@ class RegistrarPagoDialog(QDialog):
         # Monto
         self.monto = QLineEdit()
         self.monto.setPlaceholderText("0.00")
-        # Validador: solo números y un punto decimal
-        from PySide6.QtGui import QRegularExpressionValidator
-        from PySide6.QtCore import QRegularExpression
-        validator_monto = QRegularExpressionValidator(QRegularExpression(r"^\d*\.?\d*$"))
-        self.monto.setValidator(validator_monto)
+        self.monto.setValidator(crear_validador_numerico_decimal())
         layout.addRow("Monto:", self.monto)
         
         # Método de pago
@@ -147,6 +145,7 @@ class RegistrarPagoDialog(QDialog):
         # Campo cantidad (oculto por defecto)
         self.input_cantidad = QLineEdit()
         self.input_cantidad.setPlaceholderText("Cantidad")
+        self.input_cantidad.setValidator(crear_validador_entero())
         self.input_cantidad.setVisible(False)
         layout.addRow("Cantidad:", self.input_cantidad)
 
@@ -166,12 +165,20 @@ class RegistrarPagoDialog(QDialog):
         self.setLayout(layout)
     
     def cargar_clientes(self):
-        """Carga la lista de clientes"""
+        """Carga la lista de clientes con autocompletado"""
         clientes = cliente_service.listar_clientes()
         self.combo_cliente.clear()
         
+        nombres = []
         for cliente in clientes:
             self.combo_cliente.addItem(cliente['nombre'], cliente['id'])
+            nombres.append(cliente['nombre'])
+        
+        # Configurar autocompletado
+        completer = QCompleter(nombres)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        self.combo_cliente.setCompleter(completer)
 
     def cargar_productos(self):
         """Carga productos en el combo"""
@@ -247,7 +254,10 @@ class RegistrarPagoDialog(QDialog):
             return
         
         try:
-            monto = float(self.monto.text().replace(',', '.'))
+            monto_texto = self.monto.text().strip()
+            if not monto_texto:
+                raise ValueError("Monto vacío")
+            monto = float(monto_texto.replace(',', '.'))
             if monto <= 0:
                 raise ValueError()
         except ValueError:
@@ -287,11 +297,12 @@ class RegistrarPagoDialog(QDialog):
         fecha = self.fecha.date()
         cliente_id = self.combo_cliente.currentData()
         concepto_texto = self.concepto.currentText()
+        monto_texto = self.monto.text().strip()
 
         datos = {
             'cliente_id': cliente_id,
             'fecha': date(fecha.year(), fecha.month(), fecha.day()),
-            'monto': float(self.monto.text()),
+            'monto': float(monto_texto.replace(',', '.')) if monto_texto else 0.0,
             'metodo': self.metodo.currentText(),
             'concepto': concepto_texto
         }
@@ -384,13 +395,15 @@ class PagosView(QWidget):
         
         btn_todos = QPushButton("Todos")
         btn_mes = QPushButton("Este Mes")
+        btn_mayor_10 = QPushButton("Mayor a $10")
         btn_ultimos = QPushButton("Últimos 50")
         
         btn_todos.clicked.connect(lambda: self.cargar_datos(limite=500))
         btn_mes.clicked.connect(self.cargar_pagos_mes)
+        btn_mayor_10.clicked.connect(self.cargar_pagos_mayores_10)
         btn_ultimos.clicked.connect(lambda: self.cargar_datos(limite=50))
         
-        for btn in [btn_todos, btn_mes, btn_ultimos]:
+        for btn in [btn_todos, btn_mes, btn_mayor_10, btn_ultimos]:
             btn.setStyleSheet(estilo_botones)
             filtros_layout.addWidget(btn)
         
@@ -404,13 +417,123 @@ class PagosView(QWidget):
         
         layout.addLayout(filtros_layout)
         
+        # ===== Filtro por rango de fechas =====
+        filtros_fecha_layout = QHBoxLayout()
+        
+        label_fecha = QLabel("📅 Rango de fechas:")
+        label_fecha.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 13px;")
+        filtros_fecha_layout.addWidget(label_fecha)
+        
+        estilo_date_pagos = """
+            QDateEdit {
+                padding: 6px 10px;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                background-color: white;
+                font-size: 12px;
+                color: #2c3e50;
+                min-width: 120px;
+            }
+            QDateEdit:focus { border: 2px solid #3498db; }
+            QDateEdit::drop-down { border: none; }
+            QCalendarWidget QAbstractItemView {
+                selection-background-color: #3498db;
+                selection-color: black;
+                color: black;
+            }
+            QCalendarWidget QWidget {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #3498db;
+            }
+            QCalendarWidget QToolButton {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QMenu {
+                color: black;
+                background-color: white;
+            }
+            QCalendarWidget QSpinBox {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                color: black;
+            }
+            QCalendarWidget QAbstractItemView::item:disabled {
+                color: #cccccc;
+            }
+            QCalendarWidget QTableView::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QCalendarWidget QWidget {
+                alternate-background-color: white;
+            }
+            QCalendarWidget QTableView {
+                color: black;
+            }
+        """
+        
+        label_desde_p = QLabel("Desde:")
+        label_desde_p.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        filtros_fecha_layout.addWidget(label_desde_p)
+        
+        self.date_desde = QDateEdit()
+        self.date_desde.setCalendarPopup(True)
+        self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_desde.setStyleSheet(estilo_date_pagos)
+        filtros_fecha_layout.addWidget(self.date_desde)
+        
+        label_hasta_p = QLabel("Hasta:")
+        label_hasta_p.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        filtros_fecha_layout.addWidget(label_hasta_p)
+        
+        self.date_hasta = QDateEdit()
+        self.date_hasta.setCalendarPopup(True)
+        self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setStyleSheet(estilo_date_pagos)
+        filtros_fecha_layout.addWidget(self.date_hasta)
+        
+        btn_filtrar_fecha = QPushButton("Filtrar")
+        btn_filtrar_fecha.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+                font-size: 12px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #2980b9; color: white; }
+        """)
+        btn_filtrar_fecha.clicked.connect(self.filtrar_por_fecha)
+        filtros_fecha_layout.addWidget(btn_filtrar_fecha)
+        
+        btn_limpiar_fecha = QPushButton("Limpiar")
+        btn_limpiar_fecha.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+                font-size: 12px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #7f8c8d; color: white; }
+        """)
+        btn_limpiar_fecha.clicked.connect(self.limpiar_filtro_fecha)
+        filtros_fecha_layout.addWidget(btn_limpiar_fecha)
+        
+        filtros_fecha_layout.addStretch()
+        layout.addLayout(filtros_fecha_layout)
+        
         # Tabla
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(7)
         self.tabla.setHorizontalHeaderLabels(["Cliente", "Fecha", "Monto", "Método", "Concepto", "Factura", "Acciones"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionsClickable(True)
+        self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.setStyleSheet("""
             QTableWidget {
@@ -437,6 +560,8 @@ class PagosView(QWidget):
     def cargar_datos(self, limite=100):
         """Carga los datos de pagos"""
         pagos = pago_service.listar_pagos(limite=limite)
+        sorting_enabled = self.tabla.isSortingEnabled()
+        self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(pagos))
         
@@ -531,10 +656,14 @@ class PagosView(QWidget):
             acciones_layout.addWidget(btn_eliminar)
             
             self.tabla.setCellWidget(i, 6, acciones_widget)
+
+        self.tabla.setSortingEnabled(sorting_enabled)
     
     def cargar_pagos_mes(self):
         """Carga solo los pagos del mes actual"""
         pagos = pago_service.obtener_pagos_del_mes()
+        sorting_enabled = self.tabla.isSortingEnabled()
+        self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(pagos))
         
@@ -629,11 +758,116 @@ class PagosView(QWidget):
             acciones_layout.addWidget(btn_eliminar)
             
             self.tabla.setCellWidget(i, 6, acciones_widget)
+
+        self.tabla.setSortingEnabled(sorting_enabled)
+
+    def cargar_pagos_mayores_10(self):
+        """Carga pagos cuyo monto sea mayor a 10 dólares"""
+        pagos = pago_service.listar_pagos(limite=1000)
+        pagos_filtrados = [p for p in pagos if p.get('monto', 0) > 10]
+
+        self.label_total.setText(f"Total > $10: ${sum(p['monto'] for p in pagos_filtrados):,.2f}")
+        self._poblar_tabla_pagos(pagos_filtrados)
     
     def actualizar_total_mes(self):
         """Actualiza el total de pagos del mes"""
         total = pago_service.calcular_total_mes()
         self.label_total.setText(f"Total del mes: ${total:,.2f}")
+    
+    def filtrar_por_fecha(self):
+        """Filtra los pagos por el rango de fechas seleccionado"""
+        qd_desde = self.date_desde.date()
+        qd_hasta = self.date_hasta.date()
+        fecha_desde = date(qd_desde.year(), qd_desde.month(), qd_desde.day())
+        fecha_hasta = date(qd_hasta.year(), qd_hasta.month(), qd_hasta.day())
+        
+        if fecha_desde > fecha_hasta:
+            QMessageBox.warning(self, "Error", "La fecha 'Desde' no puede ser mayor que 'Hasta'.")
+            return
+        
+        pagos = pago_service.listar_pagos(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, limite=1000)
+        total_filtrado = sum(p['monto'] for p in pagos)
+        self.label_total.setText(f"Total filtrado: ${total_filtrado:,.2f}")
+        self._poblar_tabla_pagos(pagos)
+    
+    def limpiar_filtro_fecha(self):
+        """Limpia el filtro de fecha y muestra todos"""
+        self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_hasta.setDate(QDate.currentDate())
+        self.cargar_datos()
+        self.actualizar_total_mes()
+    
+    def _poblar_tabla_pagos(self, pagos):
+        """Llena la tabla con la lista de pagos proporcionada"""
+        sorting_enabled = self.tabla.isSortingEnabled()
+        self.tabla.setSortingEnabled(False)
+        self.tabla.setRowCount(len(pagos))
+        
+        for i, pago in enumerate(pagos):
+            item_cliente = QTableWidgetItem(pago['cliente_nombre'])
+            item_cliente.setForeground(Qt.black)
+            self.tabla.setItem(i, 0, item_cliente)
+            
+            item_fecha = QTableWidgetItem(pago['fecha'])
+            item_fecha.setForeground(Qt.black)
+            self.tabla.setItem(i, 1, item_fecha)
+            
+            item_monto = QTableWidgetItem(f"${pago['monto']:,.2f}")
+            item_monto.setForeground(QColor("#27ae60"))
+            self.tabla.setItem(i, 2, item_monto)
+            
+            item_metodo = QTableWidgetItem(pago['metodo'])
+            item_metodo.setForeground(Qt.black)
+            self.tabla.setItem(i, 3, item_metodo)
+            
+            item_concepto = QTableWidgetItem(pago.get('concepto', ''))
+            item_concepto.setForeground(Qt.black)
+            self.tabla.setItem(i, 4, item_concepto)
+            
+            btn_ver_factura = QPushButton("Ver Factura")
+            btn_ver_factura.setStyleSheet("""
+                QPushButton {
+                    background-color: #9b59b6; color: white;
+                    padding: 5px 15px; border: none; border-radius: 3px;
+                    font-weight: bold; font-size: 13px;
+                }
+                QPushButton:hover { background-color: #8e44ad; color: white; }
+            """)
+            btn_ver_factura.clicked.connect(lambda checked, p=pago: self.ver_factura_pago(p))
+            self.tabla.setCellWidget(i, 5, btn_ver_factura)
+            
+            acciones_widget = QWidget()
+            acciones_layout = QHBoxLayout(acciones_widget)
+            acciones_layout.setContentsMargins(5, 0, 5, 0)
+            acciones_layout.setSpacing(5)
+            
+            btn_editar = QPushButton("Editar")
+            btn_editar.setStyleSheet("""
+                QPushButton {
+                    background-color: #3498db; color: white;
+                    padding: 5px 15px; border: none; border-radius: 3px;
+                    font-weight: bold; font-size: 13px;
+                }
+                QPushButton:hover { background-color: #2980b9; color: white; }
+            """)
+            btn_editar.clicked.connect(lambda checked, p=pago: self.editar_pago(p))
+            acciones_layout.addWidget(btn_editar)
+            
+            btn_eliminar = QPushButton("Eliminar")
+            btn_eliminar.setStyleSheet("""
+                QPushButton {
+                    background-color: #e74c3c; color: white;
+                    padding: 5px 15px; border: none; border-radius: 3px;
+                    font-weight: bold; font-size: 13px;
+                }
+                QPushButton:hover { background-color: #c0392b; color: white; }
+            """)
+            btn_eliminar.clicked.connect(lambda checked, pid=pago['id']: self.eliminar_pago(pid))
+            acciones_layout.addWidget(btn_eliminar)
+            
+            self.tabla.setCellWidget(i, 6, acciones_widget)
+
+        self.tabla.setSortingEnabled(sorting_enabled)
     
     def registrar_pago(self):
         """Abre diálogo para registrar pago"""

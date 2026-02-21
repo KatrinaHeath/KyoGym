@@ -7,6 +7,34 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QColor
 from datetime import date
 from services import cliente_service
+from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit
+
+
+class FechaTableWidgetItem(QTableWidgetItem):
+    """Ítem de tabla que ordena fechas en formato dd/MM/yyyy correctamente"""
+    def _fecha_para_orden(self):
+        texto = self.text().strip()
+        if not texto or texto == "-":
+            return date.min
+        try:
+            return date.fromisoformat("-".join(reversed(texto.split("/"))))
+        except ValueError:
+            return date.min
+
+    def __lt__(self, other):
+        if isinstance(other, QTableWidgetItem):
+            otra_fecha = date.min
+            if isinstance(other, FechaTableWidgetItem):
+                otra_fecha = other._fecha_para_orden()
+            else:
+                texto = other.text().strip()
+                if texto and texto != "-":
+                    try:
+                        otra_fecha = date.fromisoformat("-".join(reversed(texto.split("/"))))
+                    except ValueError:
+                        otra_fecha = date.min
+            return self._fecha_para_orden() < otra_fecha
+        return super().__lt__(other)
 
 
 class AgregarClienteDialog(QDialog):
@@ -100,11 +128,11 @@ class AgregarClienteDialog(QDialog):
         # Nombre
         self.nombre = QLineEdit()
         self.nombre.setPlaceholderText("Ingrese el nombre completo")
+        self.nombre.setValidator(crear_validador_nombre())
         layout.addRow("Nombre:", self.nombre)
         
         # Teléfono
-        self.telefono = QLineEdit()
-        self.telefono.setPlaceholderText("+50767686213")
+        self.telefono = TelefonoFormateadoLineEdit()
         layout.addRow("Teléfono:", self.telefono)
         
         # Sexo
@@ -363,8 +391,11 @@ class ClientesView(QWidget):
         self.tabla.setColumnCount(6)
         self.tabla.setHorizontalHeaderLabels(["Nombre", "Teléfono", "Edad", "Sexo", "Fecha Nacimiento", "Acciones"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionsClickable(True)
+        self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.verticalHeader().setVisible(False)
         
@@ -405,6 +436,9 @@ class ClientesView(QWidget):
         """Carga los clientes en la tabla"""
         buscar = self.buscar_input.text() if hasattr(self, 'buscar_input') else ""
         clientes = cliente_service.listar_clientes(buscar=buscar)
+
+        sorting_enabled = self.tabla.isSortingEnabled()
+        self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(clientes))
         
@@ -433,7 +467,7 @@ class ClientesView(QWidget):
                 fecha_texto = fecha.strftime("%d/%m/%Y")
             else:
                 fecha_texto = "-"
-            self.tabla.setItem(i, 4, QTableWidgetItem(fecha_texto))
+            self.tabla.setItem(i, 4, FechaTableWidgetItem(fecha_texto))
             
             # Botones de acciones
             acciones_widget = QWidget()
@@ -480,6 +514,8 @@ class ClientesView(QWidget):
             acciones_layout.addWidget(btn_eliminar)
             
             self.tabla.setCellWidget(i, 5, acciones_widget)
+
+        self.tabla.setSortingEnabled(sorting_enabled)
     
     def agregar_cliente(self):
         """Muestra diálogo para agregar cliente"""

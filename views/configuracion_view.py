@@ -5,8 +5,12 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QMessageBox, QScrollArea, QFileDialog)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QPixmap
+from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit, crear_validador_email
 import json
 import os
+
+
+DEFAULT_DIAS_ALERTA_VENCIMIENTO = 7
 
 
 class ConfiguracionView(QWidget):
@@ -55,9 +59,6 @@ class ConfiguracionView(QWidget):
         
         # Logo del Gimnasio
         layout.addWidget(self.crear_grupo_logo())
-        
-        # Configuración de Membresías
-        layout.addWidget(self.crear_grupo_membresias())
         
         # Configuración de Notificaciones
         layout.addWidget(self.crear_grupo_notificaciones())
@@ -148,6 +149,7 @@ class ConfiguracionView(QWidget):
         # Nombre del gimnasio
         self.txt_nombre_gym = QLineEdit()
         self.txt_nombre_gym.setPlaceholderText("Ej: KyoGym")
+        self.txt_nombre_gym.setValidator(crear_validador_nombre())
         self.aplicar_estilo_input(self.txt_nombre_gym)
         
         # Dirección
@@ -156,13 +158,13 @@ class ConfiguracionView(QWidget):
         self.aplicar_estilo_input(self.txt_direccion)
         
         # Teléfono
-        self.txt_telefono = QLineEdit()
-        self.txt_telefono.setPlaceholderText("Ej: +52 123 456 7890")
+        self.txt_telefono = TelefonoFormateadoLineEdit()
         self.aplicar_estilo_input(self.txt_telefono)
         
         # Email
         self.txt_email = QLineEdit()
         self.txt_email.setPlaceholderText("Ej: info@kyogym.com")
+        self.txt_email.setValidator(crear_validador_email())
         self.aplicar_estilo_input(self.txt_email)
         
         # RFC/NIT
@@ -270,61 +272,6 @@ class ConfiguracionView(QWidget):
         info_label = QLabel("Formatos soportados: PNG, JPG, ICO. Tamaño recomendado: 200x200px")
         info_label.setStyleSheet("color: #7f8c8d; font-size: 11px;")
         layout.addWidget(info_label)
-        
-        grupo.setLayout(layout)
-        return grupo
-    
-    def crear_grupo_membresias(self):
-        """Crea el grupo de configuración de membresías"""
-        grupo = QGroupBox("💳 Configuración de Membresías")
-        grupo.setStyleSheet("""
-            QGroupBox {
-                font-size: 16px;
-                font-weight: bold;
-                color: #000000;
-                background-color: white;
-                border: 2px solid #000000;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 0 5px;
-            }
-        """)
-        
-        layout = QFormLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 25, 20, 20)
-        
-        # Días para considerar "por vencer"
-        self.spin_dias_vencer = QSpinBox()
-        self.spin_dias_vencer.setRange(1, 30)
-        self.spin_dias_vencer.setValue(7)
-        self.spin_dias_vencer.setSuffix(" días")
-        self.aplicar_estilo_input(self.spin_dias_vencer)
-        
-        # Precio membresía mensual
-        self.txt_precio_mensual = QLineEdit()
-        self.txt_precio_mensual.setPlaceholderText("Ej: 500")
-        self.aplicar_estilo_input(self.txt_precio_mensual)
-        
-        # Precio membresía trimestral
-        self.txt_precio_trimestral = QLineEdit()
-        self.txt_precio_trimestral.setPlaceholderText("Ej: 1350")
-        self.aplicar_estilo_input(self.txt_precio_trimestral)
-        
-        # Precio membresía anual
-        self.txt_precio_anual = QLineEdit()
-        self.txt_precio_anual.setPlaceholderText("Ej: 5000")
-        self.aplicar_estilo_input(self.txt_precio_anual)
-        
-        layout.addRow("Días para alerta de vencimiento:", self.spin_dias_vencer)
-        layout.addRow("Precio Mensual ($):", self.txt_precio_mensual)
-        layout.addRow("Precio Trimestral ($):", self.txt_precio_trimestral)
-        layout.addRow("Precio Anual ($):", self.txt_precio_anual)
         
         grupo.setLayout(layout)
         return grupo
@@ -689,12 +636,6 @@ class ConfiguracionView(QWidget):
                     self.txt_email.setText(config.get('email', ''))
                     self.txt_rfc.setText(config.get('rfc', ''))
                     
-                    # Membresías
-                    self.spin_dias_vencer.setValue(config.get('dias_alerta_vencimiento', 7))
-                    self.txt_precio_mensual.setText(str(config.get('precio_mensual', 500)))
-                    self.txt_precio_trimestral.setText(str(config.get('precio_trimestral', 1350)))
-                    self.txt_precio_anual.setText(str(config.get('precio_anual', 5000)))
-                    
                     # Notificaciones
                     self.chk_notif_vencimiento.setChecked(config.get('notif_vencimiento', True))
                     self.chk_notif_pagos.setChecked(config.get('notif_pagos', True))
@@ -735,21 +676,29 @@ class ConfiguracionView(QWidget):
     def guardar_configuracion(self):
         """Guarda la configuración en el archivo JSON"""
         try:
+            dias_alerta = DEFAULT_DIAS_ALERTA_VENCIMIENTO
+            if os.path.exists(self.config_file):
+                try:
+                    with open(self.config_file, 'r', encoding='utf-8') as f:
+                        config_existente = json.load(f)
+                        dias_alerta = int(config_existente.get('dias_alerta_vencimiento', DEFAULT_DIAS_ALERTA_VENCIMIENTO))
+                        if dias_alerta < 0:
+                            dias_alerta = DEFAULT_DIAS_ALERTA_VENCIMIENTO
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    dias_alerta = DEFAULT_DIAS_ALERTA_VENCIMIENTO
+
             config = {
                 'nombre_gimnasio': self.txt_nombre_gym.text(),
                 'direccion': self.txt_direccion.text(),
                 'telefono': self.txt_telefono.text(),
                 'email': self.txt_email.text(),
                 'rfc': self.txt_rfc.text(),
-                'dias_alerta_vencimiento': self.spin_dias_vencer.value(),
-                'precio_mensual': float(self.txt_precio_mensual.text() or 0),
-                'precio_trimestral': float(self.txt_precio_trimestral.text() or 0),
-                'precio_anual': float(self.txt_precio_anual.text() or 0),
                 'notif_vencimiento': self.chk_notif_vencimiento.isChecked(),
                 'notif_pagos': self.chk_notif_pagos.isChecked(),
                 'notif_nuevos': self.chk_notif_nuevos.isChecked(),
                 'formato_folio': self.txt_formato_folio.text(),
-                'auto_factura': self.chk_auto_factura.isChecked()
+                'auto_factura': self.chk_auto_factura.isChecked(),
+                'dias_alerta_vencimiento': dias_alerta
             }
             
             with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -850,10 +799,6 @@ class ConfiguracionView(QWidget):
             self.txt_telefono.setText("")
             self.txt_email.setText("")
             self.txt_rfc.setText("")
-            self.spin_dias_vencer.setValue(7)
-            self.txt_precio_mensual.setText("500")
-            self.txt_precio_trimestral.setText("1350")
-            self.txt_precio_anual.setText("5000")
             self.chk_notif_vencimiento.setChecked(True)
             self.chk_notif_pagos.setChecked(True)
             self.chk_notif_nuevos.setChecked(True)

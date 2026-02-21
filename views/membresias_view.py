@@ -10,6 +10,7 @@ from pathlib import Path
 from services import membresia_service, cliente_service
 from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA
 from utils.factura_generator import generar_factura_membresia, abrir_factura
+from utils.validators import crear_validador_numerico_decimal
 
 
 class AgregarMembresiaDialog(QDialog):
@@ -106,8 +107,10 @@ class AgregarMembresiaDialog(QDialog):
             }
         """)
         
-        # Selector de cliente
+        # Selector de cliente con autocompletado
         self.combo_cliente = QComboBox()
+        self.combo_cliente.setEditable(True)
+        self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)
         self.cargar_clientes()
         layout.addRow("Cliente:", self.combo_cliente)
         
@@ -120,11 +123,7 @@ class AgregarMembresiaDialog(QDialog):
         # Monto
         self.monto = QLineEdit()
         self.monto.setPlaceholderText("0.00")
-        # Validador: solo números y un punto decimal
-        from PySide6.QtGui import QRegularExpressionValidator
-        from PySide6.QtCore import QRegularExpression
-        validator_monto = QRegularExpressionValidator(QRegularExpression(r"^\d*\.?\d*$"))
-        self.monto.setValidator(validator_monto)
+        self.monto.setValidator(crear_validador_numerico_decimal())
         layout.addRow("Monto:", self.monto)
         
         # Botones
@@ -136,12 +135,23 @@ class AgregarMembresiaDialog(QDialog):
         self.setLayout(layout)
     
     def cargar_clientes(self):
-        """Carga la lista de clientes"""
+        """Carga la lista de clientes con autocompletado"""
+        from PySide6.QtWidgets import QCompleter
+        from PySide6.QtCore import Qt
+        
         clientes = cliente_service.listar_clientes()
         self.combo_cliente.clear()
         
+        nombres = []
         for cliente in clientes:
             self.combo_cliente.addItem(cliente['nombre'], cliente['id'])
+            nombres.append(cliente['nombre'])
+        
+        # Configurar autocompletado
+        completer = QCompleter(nombres)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        self.combo_cliente.setCompleter(completer)
     
     def cargar_datos_membresia(self):
         """Carga los datos de la membresía a editar"""
@@ -193,8 +203,41 @@ class AgregarMembresiaDialog(QDialog):
             msg.exec()
             return
         
+        monto_texto = self.monto.text().strip()
+        if not monto_texto:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText("Ingrese un monto")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: white;
+                }
+                QLabel {
+                    color: black;
+                    font-size: 13px;
+                    min-width: 300px;
+                }
+                QPushButton {
+                    background-color: #3498db;
+                    color: white;
+                    padding: 8px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #2980b9;
+                }
+            """)
+            msg.exec()
+            return
+        
         try:
-            float(self.monto.text())
+            monto_valor = float(monto_texto)
+            if monto_valor < 0:
+                raise ValueError("Monto negativo")
         except ValueError:
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
@@ -230,10 +273,11 @@ class AgregarMembresiaDialog(QDialog):
     def obtener_datos(self):
         """Retorna los datos ingresados"""
         fecha = self.fecha_inicio.date()
+        monto_texto = self.monto.text().strip()
         return {
             'cliente_id': self.combo_cliente.currentData(),
             'fecha_inicio': date(fecha.year(), fecha.month(), fecha.day()),
-            'monto': float(self.monto.text())
+            'monto': float(monto_texto) if monto_texto else 0.0
         }
 
 
@@ -242,6 +286,8 @@ class MembresiasView(QWidget):
     def __init__(self):
         super().__init__()
         self.filtro_actual = "Todos"
+        self.filtro_fecha_desde = None
+        self.filtro_fecha_hasta = None
         self.init_ui()
         self.cargar_datos()
     
@@ -326,13 +372,123 @@ class MembresiasView(QWidget):
         
         layout.addLayout(filtros_layout)
         
+        # ===== Filtro por rango de fechas =====
+        filtros_fecha_layout = QHBoxLayout()
+        
+        label_fecha = QLabel("📅 Rango de fechas:")
+        label_fecha.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 13px;")
+        filtros_fecha_layout.addWidget(label_fecha)
+        
+        estilo_date_m = """
+            QDateEdit {
+                padding: 6px 10px;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                background-color: white;
+                font-size: 12px;
+                color: #2c3e50;
+                min-width: 120px;
+            }
+            QDateEdit:focus { border: 2px solid #3498db; }
+            QDateEdit::drop-down { border: none; }
+            QCalendarWidget QAbstractItemView {
+                selection-background-color: #3498db;
+                selection-color: black;
+                color: black;
+            }
+            QCalendarWidget QWidget {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #3498db;
+            }
+            QCalendarWidget QToolButton {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QMenu {
+                color: black;
+                background-color: white;
+            }
+            QCalendarWidget QSpinBox {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                color: black;
+            }
+            QCalendarWidget QAbstractItemView::item:disabled {
+                color: #cccccc;
+            }
+            QCalendarWidget QTableView::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QCalendarWidget QWidget {
+                alternate-background-color: white;
+            }
+            QCalendarWidget QTableView {
+                color: black;
+            }
+        """
+        
+        label_desde_m = QLabel("Desde:")
+        label_desde_m.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        filtros_fecha_layout.addWidget(label_desde_m)
+        
+        self.date_desde = QDateEdit()
+        self.date_desde.setCalendarPopup(True)
+        self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_desde.setStyleSheet(estilo_date_m)
+        filtros_fecha_layout.addWidget(self.date_desde)
+        
+        label_hasta_m = QLabel("Hasta:")
+        label_hasta_m.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        filtros_fecha_layout.addWidget(label_hasta_m)
+        
+        self.date_hasta = QDateEdit()
+        self.date_hasta.setCalendarPopup(True)
+        self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setStyleSheet(estilo_date_m)
+        filtros_fecha_layout.addWidget(self.date_hasta)
+        
+        btn_filtrar_fecha = QPushButton("Filtrar")
+        btn_filtrar_fecha.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+                font-size: 12px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #2980b9; color: white; }
+        """)
+        btn_filtrar_fecha.clicked.connect(self.filtrar_por_fecha)
+        filtros_fecha_layout.addWidget(btn_filtrar_fecha)
+        
+        btn_limpiar_fecha = QPushButton("Limpiar")
+        btn_limpiar_fecha.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+                font-size: 12px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #7f8c8d; color: white; }
+        """)
+        btn_limpiar_fecha.clicked.connect(self.limpiar_filtro_fecha)
+        filtros_fecha_layout.addWidget(btn_limpiar_fecha)
+        
+        filtros_fecha_layout.addStretch()
+        layout.addLayout(filtros_fecha_layout)
+        
         # Tabla
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(8)
         self.tabla.setHorizontalHeaderLabels(["Cliente", "Teléfono", "Inicio", "Vencimiento", "Monto", "Estado", "Factura", "Acciones"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionsClickable(True)
+        self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.setStyleSheet("""
             QTableWidget {
@@ -367,12 +523,43 @@ class MembresiasView(QWidget):
         
         self.cargar_datos()
     
+    def filtrar_por_fecha(self):
+        """Filtra las membresías por el rango de fechas seleccionado"""
+        qd_desde = self.date_desde.date()
+        qd_hasta = self.date_hasta.date()
+        self.filtro_fecha_desde = date(qd_desde.year(), qd_desde.month(), qd_desde.day())
+        self.filtro_fecha_hasta = date(qd_hasta.year(), qd_hasta.month(), qd_hasta.day())
+        
+        if self.filtro_fecha_desde > self.filtro_fecha_hasta:
+            QMessageBox.warning(self, "Error", "La fecha 'Desde' no puede ser mayor que 'Hasta'.")
+            return
+        
+        self.cargar_datos()
+    
+    def limpiar_filtro_fecha(self):
+        """Limpia el filtro de fecha"""
+        self.filtro_fecha_desde = None
+        self.filtro_fecha_hasta = None
+        self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_hasta.setDate(QDate.currentDate())
+        self.cargar_datos()
+    
     def cargar_datos(self):
-        """Carga los datos de membresías"""
+        """Carga los datos de membresías con filtros de estado y fecha"""
         if self.filtro_actual == "Todos":
             membresias = membresia_service.listar_membresias()
         else:
             membresias = membresia_service.listar_membresias(estado=self.filtro_actual)
+        
+        # Aplicar filtro de fecha (por fecha de vencimiento)
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            membresias = [
+                m for m in membresias
+                if self.filtro_fecha_desde <= date.fromisoformat(m['fecha_vencimiento']) <= self.filtro_fecha_hasta
+            ]
+
+        sorting_enabled = self.tabla.isSortingEnabled()
+        self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(membresias))
         
@@ -479,6 +666,8 @@ class MembresiasView(QWidget):
             acciones_layout.addWidget(btn_eliminar)
             
             self.tabla.setCellWidget(i, 7, acciones_widget)
+
+        self.tabla.setSortingEnabled(sorting_enabled)
     
     def agregar_membresia(self):
         """Abre diálogo para agregar membresía"""

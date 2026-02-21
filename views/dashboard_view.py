@@ -1,14 +1,87 @@
-"""Vista del Dashboard con métricas y próximas a vencer"""
+"""Vista del Dashboard con métricas, filtros por fecha, reloj y exportar PDF"""
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                                QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
-                               QPushButton)
-from PySide6.QtCore import Qt, QTimer, QRect
-from PySide6.QtGui import QFont, QPainter, QColor, QPen, QBrush
+                               QLineEdit, QPushButton, QDateEdit, QMessageBox,
+                               QFileDialog)
+from PySide6.QtCore import Qt, QTimer, QRect, QDate
+from PySide6.QtGui import QFont, QPainter, QColor, QPen, QBrush, QPixmap
 from services import membresia_service, pago_service, cliente_service
 from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA
-from datetime import date
-import math
+from datetime import date, datetime
+import math, tempfile, os
 from services.inventario_service import obtener_stock_bajo
+
+
+# ---------- TARJETA ESTADÍSTICA MODERNA ----------
+class StatCard(QFrame):
+    """Tarjeta moderna para mostrar estadísticas"""
+    def __init__(self, title, value, color, icon, extra_info=""):
+        super().__init__()
+        
+        self.setFixedHeight(130)
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: white;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+            }}
+        """)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        
+        # Icono en círculo a la izquierda
+        icon_label = QLabel(icon)
+        icon_label.setFixedSize(50, 50)
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {color};
+                border-radius: 25px;
+                font-size: 24px;
+            }}
+        """)
+        layout.addWidget(icon_label)
+        
+        # Contenedor de texto a la derecha
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
+        
+        # Título
+        title_label = QLabel(title)
+        title_label.setStyleSheet("color: #7f8c8d; font-size: 14px; font-weight: normal;")
+        
+        # Valor
+        value_label = QLabel(str(value))
+        value_label.setStyleSheet(f"""
+            color: #2c3e50;
+            font-size: 36px;
+            font-weight: bold;
+        """)
+        
+        # Información extra
+        extra_label = QLabel(extra_info)
+        extra_label.setStyleSheet("color: #95a5a6; font-size: 12px;")
+        extra_label.setWordWrap(True)
+        
+        text_layout.addWidget(title_label)
+        text_layout.addWidget(value_label)
+        if extra_info:
+            text_layout.addWidget(extra_label)
+        text_layout.addStretch()
+        
+        layout.addLayout(text_layout)
+        layout.addStretch()
+        
+        self.label_valor = value_label
+        self.label_extra = extra_label
+        self.color = color
+    
+    def actualizar_valor(self, nuevo_valor, extra_info=""):
+        """Actualiza el valor y la información extra"""
+        self.label_valor.setText(str(nuevo_valor))
+        self.label_extra.setText(extra_info)
 
 
 
@@ -56,6 +129,7 @@ class SimplePieChart(QWidget):
         super().__init__()
         self.setMinimumHeight(200)
         self.setMinimumWidth(200)
+        self.setStyleSheet("background-color: white;")
         self.datos = [
             ("Activa", 0, QColor("#4CAF50")),
             ("Por Vencer", 0, QColor("#FF9800")),
@@ -149,21 +223,28 @@ class SimplePieChart(QWidget):
                         
                         start_angle += span_angle
         
-        # Leyenda con porcentajes
+        # Leyenda en horizontal
         legend_y = y + size + 20
-        legend_x = 20
         painter.setFont(QFont("Arial", 10))
-        
-        for label, value, color in self.datos:
+        metrics = painter.fontMetrics()
+
+        textos_leyenda = [f"{label}  {value}" for label, value, _ in self.datos]
+        anchos_items = [15 + 6 + metrics.horizontalAdvance(texto) for texto in textos_leyenda]
+        separacion = 20
+        ancho_total = sum(anchos_items) + separacion * max(0, len(anchos_items) - 1)
+        legend_x = max(20, int((width - ancho_total) / 2))
+
+        for i, (label, value, color) in enumerate(self.datos):
+            texto = f"{label}  {value}"
+
             # Cuadrado de color
-            painter.fillRect(legend_x, legend_y, 15, 15, color)
-            
-            # Texto con porcentaje
-            painter.setPen(QColor("#2c3e50"))
-            porcentaje = (value / total * 100) if total > 0 else 0
-            painter.drawText(legend_x + 20, legend_y + 12, f"{label}: {value}")
-            
-            legend_y += 20
+            painter.fillRect(int(legend_x), int(legend_y), 15, 15, color)
+
+            # Texto negro
+            painter.setPen(QColor("#000000"))
+            painter.drawText(int(legend_x + 21), int(legend_y + 12), texto)
+
+            legend_x += anchos_items[i] + separacion
         
         # Tooltip sobre el sector
         if self.sector_bajo_cursor is not None and total > 0:
@@ -250,100 +331,265 @@ class SimplePieChart(QWidget):
             self.update()
 
 
-class MetricCard(QFrame):
-    """Widget de tarjeta de métrica"""
-    def __init__(self, titulo, valor, color="#3498db", icono="📊"):
-        super().__init__()
-        self.setMinimumHeight(120)
-        self.setMaximumHeight(170)
-        self.setMinimumWidth(160)
-        self.setStyleSheet(f"""
-            MetricCard {{
-                background-color: white;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
-            }}
-        """)
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(15, 12, 15, 12)
-        layout.setSpacing(2)
-        
-        # Layout horizontal para icono y título
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(8)
-        
-        # Icono
-        label_icono = QLabel(icono)
-        label_icono.setStyleSheet("font-size: 24px;")
-        header_layout.addWidget(label_icono)
-        
-        # Título
-        label_titulo = QLabel(titulo)
-        label_titulo.setStyleSheet("color: #666; font-size: 12px; font-weight: normal;")
-        label_titulo.setAlignment(Qt.AlignLeft)
-        header_layout.addWidget(label_titulo)
-        header_layout.addStretch()
-        
-        layout.addLayout(header_layout)
-        
-        # Valor
-        label_valor = QLabel(str(valor))
-        label_valor.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
-        label_valor.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        label_valor.setWordWrap(True)
-        
-        layout.addWidget(label_valor)
-        layout.addStretch()
-        
-        self.setLayout(layout)
-        self.label_valor = label_valor
-        self.color = color
-    
-    def actualizar_valor(self, nuevo_valor):
-        """Actualiza el valor mostrado en la tarjeta"""
-        self.label_valor.setText(str(nuevo_valor))
-
-
 class DashboardView(QWidget):
     """Vista principal del Dashboard"""
     def __init__(self):
         super().__init__()
+        # Estado de filtros
+        self.filtro_estado_membresia = None  # None = Todas
+        self.filtro_fecha_desde = None
+        self.filtro_fecha_hasta = None
+        self._membresias_mostradas = []
+        self._pagos_mostrados = []
+        
         self.init_ui()
         self.cargar_datos()
         
-        # Actualizar cada 30 segundos
+        # Timer de datos cada 30 segundos
         self.timer = QTimer()
         self.timer.timeout.connect(self.cargar_datos)
         self.timer.start(30000)
+        
+        # Timer del reloj cada segundo
+        self.timer_reloj = QTimer()
+        self.timer_reloj.timeout.connect(self.actualizar_reloj)
+        self.timer_reloj.start(1000)
     
     def init_ui(self):
         """Inicializa la interfaz de usuario"""
+        # Estilos generales
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f5f5f5;
+                font-family: Arial, sans-serif;
+            }
+            QCalendarWidget QAbstractItemView {
+                selection-background-color: #3498db;
+                selection-color: black;
+                color: black;
+            }
+            QCalendarWidget QWidget {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #3498db;
+            }
+            QCalendarWidget QToolButton {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QMenu {
+                color: black;
+                background-color: white;
+            }
+            QCalendarWidget QSpinBox {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_prevmonth,
+            QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_nextmonth {
+                qproperty-icon: none;
+            }
+            QCalendarWidget QAbstractItemView::item:disabled {
+                color: #cccccc;
+            }
+            QCalendarWidget QTableView::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QCalendarWidget QWidget {
+                alternate-background-color: white;
+            }
+            QCalendarWidget QAbstractItemView:enabled[isHeaderRow="true"] {
+                color: white;
+                font-weight: bold;
+                background-color: #3498db;
+            }
+            QCalendarWidget QTableView {
+                color: black;
+            }
+        """)
+        
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Header con título
+        # Header con título y búsqueda
         header_layout = QHBoxLayout()
         
         titulo = QLabel("Dashboard")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #2c3e50;")
+        titulo.setStyleSheet("color: #2c3e50; background-color: transparent;")
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
         
+        # Reloj del sistema
+        self.label_reloj = QLabel()
+        self.label_reloj.setFont(QFont("Arial", 14))
+        self.label_reloj.setStyleSheet("color: #2c3e50; background-color: transparent;")
+        self.actualizar_reloj()
+        header_layout.addWidget(self.label_reloj)
+        
+        header_layout.addSpacing(15)
+        
+        # Botón exportar PDF
+        btn_exportar_pdf = QPushButton("📄 Exportar PDF")
+        btn_exportar_pdf.setStyleSheet("""
+            QPushButton {
+                background-color: #8e44ad;
+                color: white;
+                padding: 8px 18px;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #7d3c98;
+                color: white;
+            }
+        """)
+        btn_exportar_pdf.clicked.connect(self.exportar_dashboard_pdf)
+        header_layout.addWidget(btn_exportar_pdf)
+        
         layout.addLayout(header_layout)
+        
+        # ========== BARRA DE FILTROS POR FECHA ==========
+        filtros_fecha_frame = QFrame()
+        filtros_fecha_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+            }
+        """)
+        filtros_fecha_layout = QHBoxLayout(filtros_fecha_frame)
+        filtros_fecha_layout.setContentsMargins(15, 10, 15, 10)
+        filtros_fecha_layout.setSpacing(10)
+        
+        label_filtros = QLabel("📅 Filtrar por fecha:")
+        label_filtros.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 13px; border: none;")
+        filtros_fecha_layout.addWidget(label_filtros)
+        
+        estilo_date = """
+            QDateEdit {
+                padding: 6px 10px;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                background-color: white;
+                font-size: 12px;
+                color: #2c3e50;
+                min-width: 120px;
+            }
+            QDateEdit:focus { border: 2px solid #3498db; }
+            QDateEdit::drop-down { border: none; }
+            QCalendarWidget QAbstractItemView {
+                selection-background-color: #3498db;
+                selection-color: black;
+                color: black;
+            }
+            QCalendarWidget QWidget {
+                color: black;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #3498db;
+            }
+            QCalendarWidget QToolButton {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QMenu {
+                color: black;
+                background-color: white;
+            }
+            QCalendarWidget QSpinBox {
+                color: white;
+                background-color: #3498db;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                color: black;
+            }
+            QCalendarWidget QAbstractItemView::item:disabled {
+                color: #cccccc;
+            }
+            QCalendarWidget QTableView::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QCalendarWidget QWidget {
+                alternate-background-color: white;
+            }
+            QCalendarWidget QTableView {
+                color: black;
+            }
+        """
+        
+        label_desde = QLabel("Desde:")
+        label_desde.setStyleSheet("color: #7f8c8d; font-size: 12px; border: none;")
+        filtros_fecha_layout.addWidget(label_desde)
+        
+        self.date_desde = QDateEdit()
+        self.date_desde.setCalendarPopup(True)
+        self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_desde.setStyleSheet(estilo_date)
+        filtros_fecha_layout.addWidget(self.date_desde)
+        
+        label_hasta = QLabel("Hasta:")
+        label_hasta.setStyleSheet("color: #7f8c8d; font-size: 12px; border: none;")
+        filtros_fecha_layout.addWidget(label_hasta)
+        
+        self.date_hasta = QDateEdit()
+        self.date_hasta.setCalendarPopup(True)
+        self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setStyleSheet(estilo_date)
+        filtros_fecha_layout.addWidget(self.date_hasta)
+        
+        btn_aplicar_fecha = QPushButton("Aplicar")
+        btn_aplicar_fecha.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+                font-size: 12px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #2980b9; color: white; }
+        """)
+        btn_aplicar_fecha.clicked.connect(self.aplicar_filtro_fecha)
+        filtros_fecha_layout.addWidget(btn_aplicar_fecha)
+        
+        btn_limpiar_fecha = QPushButton("Limpiar")
+        btn_limpiar_fecha.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+                font-size: 12px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #7f8c8d; color: white; }
+        """)
+        btn_limpiar_fecha.clicked.connect(self.limpiar_filtro_fecha)
+        filtros_fecha_layout.addWidget(btn_limpiar_fecha)
+        
+        # Etiqueta de filtros activos
+        self.label_filtros_activos = QLabel("")
+        self.label_filtros_activos.setStyleSheet("color: #8e44ad; font-size: 11px; font-style: italic; border: none;")
+        filtros_fecha_layout.addWidget(self.label_filtros_activos)
+        
+        filtros_fecha_layout.addStretch()
+        
+        layout.addWidget(filtros_fecha_frame)
         
         # Contenedor de métricas
         metricas_layout = QHBoxLayout()
         metricas_layout.setSpacing(15)
         
-        self.card_activas = MetricCard("Membresías Activas", "0", "#4CAF50", "✅")
-        self.card_por_vencer = MetricCard("Membresías por Vencer", "0", "#FF9800", "⏰")
-        self.card_vencidas = MetricCard("Membresías Vencidas", "0", "#F44336", "❌")
-        self.card_pagos_mes = MetricCard("Pagos del Mes", "$0", "#2196F3", "💵")
-        self.card_stock_bajo = MetricCard("Stock Bajo", "0", "#E74C3C", "⚠")
+        self.card_activas = StatCard("Activas", "0", "#27ae60", "✅")
+        self.card_por_vencer = StatCard("Por vencer", "0", "#f39c12", "⏰")
+        self.card_vencidas = StatCard("Vencidas", "0", "#e74c3c", "❌")
+        self.card_pagos_mes = StatCard("Ingresos", "$0", "#3498db", "💵")
+        self.card_stock_bajo = StatCard("Stock bajo", "0", "#e67e22", "⚠️")
 
         
         metricas_layout.addWidget(self.card_activas)
@@ -359,34 +605,17 @@ class DashboardView(QWidget):
         graficos_layout = QHBoxLayout()
         graficos_layout.setSpacing(15)
         
-        # Gráfico de barras (membresías por mes)
-        frame_barras = QFrame()
-        frame_barras.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
-            }
-        """)
-        layout_barras = QVBoxLayout(frame_barras)
-        layout_barras.setContentsMargins(10, 10, 10, 10)
-        
-        self.chart_barras = SimpleBarChart()
-        layout_barras.addWidget(self.chart_barras)
-        
-        graficos_layout.addWidget(frame_barras, 2)
-        
         # Gráfico de torta (membresías por estado)
         frame_torta_membresias = QFrame()
         frame_torta_membresias.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 2px solid #e0e0e0;
                 border-radius: 8px;
+                border: 1px solid #e0e0e0;
             }
         """)
         layout_torta_membresias = QVBoxLayout(frame_torta_membresias)
-        layout_torta_membresias.setContentsMargins(10, 10, 10, 10)
+        layout_torta_membresias.setContentsMargins(15, 15, 15, 15)
         
         # Título del gráfico
         titulo_torta_membresias = QLabel("Membresías")
@@ -404,15 +633,15 @@ class DashboardView(QWidget):
         frame_torta_sexo.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 2px solid #e0e0e0;
                 border-radius: 8px;
+                border: 1px solid #e0e0e0;
             }
         """)
         layout_torta_sexo = QVBoxLayout(frame_torta_sexo)
-        layout_torta_sexo.setContentsMargins(10, 10, 10, 10)
+        layout_torta_sexo.setContentsMargins(15, 15, 15, 15)
         
         # Título del gráfico
-        titulo_torta_sexo = QLabel("Clientes por Sexo")
+        titulo_torta_sexo = QLabel("Clientes por sexo")
         titulo_torta_sexo.setFont(QFont("Arial", 14, QFont.Bold))
         titulo_torta_sexo.setStyleSheet("color: #2c3e50; padding: 5px;")
         layout_torta_sexo.addWidget(titulo_torta_sexo)
@@ -433,8 +662,8 @@ class DashboardView(QWidget):
         frame_membresias.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 2px solid #e0e0e0;
                 border-radius: 8px;
+                border: 1px solid #e0e0e0;
             }
         """)
         layout_membresias = QVBoxLayout(frame_membresias)
@@ -447,28 +676,26 @@ class DashboardView(QWidget):
         
         # Filtros de membresías
         filtros_layout = QHBoxLayout()
-        label_filtro = QLabel("Filtro:")
-        label_filtro.setStyleSheet("color: #000000; font-size: 12px;")
-        filtros_layout.addWidget(label_filtro)
         
         # Estilos para botones de filtro
         estilo_botones = """
             QPushButton {
-                background-color: #f0f0f0;
-                color: #000000;
-                padding: 5px 12px;
-                border: 2px solid #d0d0d0;
-                border-radius: 4px;
-                font-size: 11px;
+                background-color: transparent;
+                color: #7f8c8d;
+                padding: 6px 14px;
+                border: none;
+                border-bottom: 2px solid transparent;
+                border-radius: 0px;
+                font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border: 2px solid #b0b0b0;
+                background-color: #ecf0f1;
+                color: #2c3e50;
             }
             QPushButton:checked {
-                background-color: #2196F3;
-                color: black;
-                border: 2px solid #1976D2;
+                background-color: transparent;
+                color: #3498db;
+                border-bottom: 2px solid #3498db;
             }
         """
         
@@ -506,23 +733,27 @@ class DashboardView(QWidget):
         self.tabla_membresias.setMinimumHeight(150)
         self.tabla_membresias.setStyleSheet("""
             QTableWidget {
-                gridline-color: #e0e0e0;
+                gridline-color: transparent;
                 font-size: 12px;
                 border: none;
                 background-color: white;
             }
             QTableWidget::item {
                 padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
+                border-bottom: 1px solid #ecf0f1;
+                color: #2c3e50;
+            }
+            QTableWidget::item:selected {
+                background-color: #ebf5fb;
             }
             QHeaderView::section {
                 background-color: #f8f9fa;
-                color: #2c3e50;
+                color: #7f8c8d;
                 padding: 10px;
                 font-weight: bold;
                 border: none;
-                border-bottom: 2px solid #e0e0e0;
-                font-size: 12px;
+                border-bottom: 1px solid #e0e0e0;
+                font-size: 11px;
             }
         """)
         layout_membresias.addWidget(self.tabla_membresias)
@@ -534,8 +765,8 @@ class DashboardView(QWidget):
         frame_pagos.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 2px solid #e0e0e0;
                 border-radius: 8px;
+                border: 1px solid #e0e0e0;
             }
         """)
         layout_pagos = QVBoxLayout(frame_pagos)
@@ -556,23 +787,27 @@ class DashboardView(QWidget):
         self.tabla_pagos.setMinimumHeight(150)
         self.tabla_pagos.setStyleSheet("""
             QTableWidget {
-                gridline-color: #e0e0e0;
+                gridline-color: transparent;
                 font-size: 12px;
                 border: none;
                 background-color: white;
             }
             QTableWidget::item {
                 padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
+                border-bottom: 1px solid #ecf0f1;
+                color: #2c3e50;
+            }
+            QTableWidget::item:selected {
+                background-color: #ebf5fb;
             }
             QHeaderView::section {
                 background-color: #f8f9fa;
-                color: #2c3e50;
+                color: #7f8c8d;
                 padding: 10px;
                 font-weight: bold;
                 border: none;
-                border-bottom: 2px solid #e0e0e0;
-                font-size: 12px;
+                border-bottom: 1px solid #e0e0e0;
+                font-size: 11px;
             }
         """)
         layout_pagos.addWidget(self.tabla_pagos)
@@ -583,16 +818,82 @@ class DashboardView(QWidget):
         
         self.setLayout(layout)
     
-    def cargar_datos(self):
-        """Carga los datos del dashboard"""
-        # Obtener conteo de membresías
-        conteo = membresia_service.contar_membresias_por_estado()
+    def actualizar_reloj(self):
+        """Actualiza el reloj del sistema cada segundo"""
+        ahora = datetime.now()
+        self.label_reloj.setText(ahora.strftime("🕐 %d/%m/%Y  %H:%M:%S"))
+    
+    def aplicar_filtro_fecha(self):
+        """Aplica el filtro de fecha seleccionado"""
+        qd_desde = self.date_desde.date()
+        qd_hasta = self.date_hasta.date()
+        self.filtro_fecha_desde = date(qd_desde.year(), qd_desde.month(), qd_desde.day())
+        self.filtro_fecha_hasta = date(qd_hasta.year(), qd_hasta.month(), qd_hasta.day())
         
+        if self.filtro_fecha_desde > self.filtro_fecha_hasta:
+            QMessageBox.warning(self, "Error", "La fecha 'Desde' no puede ser mayor que 'Hasta'.")
+            return
+        
+        self.actualizar_label_filtros()
+        self.cargar_datos()
+    
+    def limpiar_filtro_fecha(self):
+        """Limpia el filtro de fecha"""
+        self.filtro_fecha_desde = None
+        self.filtro_fecha_hasta = None
+        self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_hasta.setDate(QDate.currentDate())
+        self.label_filtros_activos.setText("")
+        self.cargar_datos()
+    
+    def actualizar_label_filtros(self):
+        """Actualiza la etiqueta que muestra los filtros activos"""
+        partes = []
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            partes.append(f"Fecha: {self.filtro_fecha_desde.strftime('%d/%m/%Y')} - {self.filtro_fecha_hasta.strftime('%d/%m/%Y')}")
+        if self.filtro_estado_membresia:
+            partes.append(f"Estado: {self.filtro_estado_membresia}")
+        if partes:
+            self.label_filtros_activos.setText("Filtros: " + " | ".join(partes))
+        else:
+            self.label_filtros_activos.setText("")
+    
+    def obtener_texto_filtros_activos(self):
+        """Devuelve texto descriptivo de los filtros activos para el PDF"""
+        partes = []
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            partes.append(f"Rango de fecha: {self.filtro_fecha_desde.strftime('%d/%m/%Y')} al {self.filtro_fecha_hasta.strftime('%d/%m/%Y')}")
+        else:
+            partes.append("Rango de fecha: Todos")
+        if self.filtro_estado_membresia:
+            partes.append(f"Estado membresía: {self.filtro_estado_membresia}")
+        else:
+            partes.append("Estado membresía: Todas")
+        return partes
+    
+    def cargar_datos(self):
+        """Carga los datos del dashboard respetando filtros"""
+        # Si hay filtro de fecha, recalcular conteo de membresías filtrado
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            todas = membresia_service.listar_membresias()
+            filtradas = [
+                m for m in todas
+                if self.filtro_fecha_desde <= date.fromisoformat(m['fecha_vencimiento']) <= self.filtro_fecha_hasta
+            ]
+            conteo = {ESTADO_ACTIVA: 0, ESTADO_POR_VENCER: 0, ESTADO_VENCIDA: 0}
+            for m in filtradas:
+                est = m['estado']
+                if est in conteo:
+                    conteo[est] += 1
+        else:
+            conteo = membresia_service.contar_membresias_por_estado()
+        
+        # Actualizar cards
         self.card_activas.actualizar_valor(conteo[ESTADO_ACTIVA])
         self.card_por_vencer.actualizar_valor(conteo[ESTADO_POR_VENCER])
         self.card_vencidas.actualizar_valor(conteo[ESTADO_VENCIDA])
         
-        # Actualizar gráfico de torta con datos reales
+        # Actualizar gráfico de torta con datos (filtrados o no)
         self.chart_torta.actualizar_datos(
             conteo[ESTADO_ACTIVA],
             conteo[ESTADO_POR_VENCER],
@@ -602,29 +903,44 @@ class DashboardView(QWidget):
         # Actualizar gráfico de sexo
         conteo_sexo = cliente_service.contar_clientes_por_sexo()
         self.chart_torta_sexo.datos = [
-            ("Masculino", conteo_sexo['Masculino'], QColor("#2196F3")),
-            ("Femenino", conteo_sexo['Femenino'], QColor("#E91E63")),
-            ("Otro", conteo_sexo['Otro'], QColor("#9C27B0"))
+            ("Masculino", conteo_sexo['Masculino'], QColor("#3498db")),
+            ("Femenino", conteo_sexo['Femenino'], QColor("#e91e63")),
+            ("Otro", conteo_sexo['Otro'], QColor("#9b59b6"))
         ]
         self.chart_torta_sexo.update()
         
-        # Obtener total de pagos del mes
-        total_mes = pago_service.calcular_total_mes()
-        self.card_pagos_mes.actualizar_valor(f"${total_mes:,.2f}")
+        # Pagos: si hay filtro de fecha, calcular con ese rango
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            pagos_filtrados = pago_service.listar_pagos(
+                fecha_desde=self.filtro_fecha_desde,
+                fecha_hasta=self.filtro_fecha_hasta,
+                limite=1000
+            )
+            total_ingresos = sum(p['monto'] for p in pagos_filtrados)
+            self.card_pagos_mes.actualizar_valor(
+                f"${total_ingresos:,.0f}",
+                f"📈 {self.filtro_fecha_desde.strftime('%d/%m')} - {self.filtro_fecha_hasta.strftime('%d/%m')}"
+            )
+        else:
+            total_mes = pago_service.calcular_total_mes()
+            self.card_pagos_mes.actualizar_valor(f"${total_mes:,.0f}", "📈 Este mes")
 
         # Stock bajo
         productos_bajo = obtener_stock_bajo()
         cantidad_bajo = len(productos_bajo)
-        self.card_stock_bajo.actualizar_valor(cantidad_bajo)
-
-        if cantidad_bajo > 0:
-         self.card_stock_bajo.label_valor.setStyleSheet("color: #E74C3C; font-size: 28px; font-weight: bold;")
+        nombres_bajo = [p["nombre"] for p in productos_bajo]
+        if nombres_bajo:
+            resumen_nombres = ", ".join(nombres_bajo[:3])
+            if len(nombres_bajo) > 3:
+                resumen_nombres += "..."
+            extra_stock = f"⚙️ {cantidad_bajo} productos: {resumen_nombres}"
         else:
-         self.card_stock_bajo.label_valor.setStyleSheet("color: #2ECC71; font-size: 28px; font-weight: bold;")
+            extra_stock = "⚙️ Sin productos con stock bajo"
+        self.card_stock_bajo.actualizar_valor(cantidad_bajo, extra_stock)
 
         
         # Cargar tablas
-        self.cargar_tabla_membresias()
+        self.cargar_tabla_membresias(self.filtro_estado_membresia)
         self.cargar_tabla_pagos()
     
     def filtrar_membresias(self, estado, boton_activo):
@@ -638,32 +954,48 @@ class DashboardView(QWidget):
         # Marcar el botón activo
         boton_activo.setChecked(True)
         
+        # Guardar estado del filtro
+        self.filtro_estado_membresia = estado
+        self.actualizar_label_filtros()
+        
         # Cargar tabla con filtro
         self.cargar_tabla_membresias(estado)
     
     def cargar_tabla_membresias(self, filtro_estado=None):
-        """Carga la tabla de membresías recientes"""
+        """Carga la tabla de membresías con filtros de estado y fecha"""
         if filtro_estado:
-            membresias = [m for m in membresia_service.listar_membresias() if m['estado'] == filtro_estado][:5]
+            membresias = [m for m in membresia_service.listar_membresias() if m['estado'] == filtro_estado]
         else:
-            membresias = membresia_service.listar_membresias()[:5]
+            membresias = membresia_service.listar_membresias()
+        
+        # Filtrar por rango de fecha de vencimiento si aplica
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            membresias = [
+                m for m in membresias
+                if self.filtro_fecha_desde <= date.fromisoformat(m['fecha_vencimiento']) <= self.filtro_fecha_hasta
+            ]
+        
+        # Guardar para export PDF
+        self._membresias_mostradas = membresias[:10]
+        
+        membresias = membresias[:10]
         
         self.tabla_membresias.setRowCount(len(membresias))
         
         for i, membresia in enumerate(membresias):
-            # Cliente - color negro
+            # Cliente - color oscuro
             cliente_item = QTableWidgetItem(membresia['cliente_nombre'])
-            cliente_item.setForeground(QColor("#000000"))
+            cliente_item.setForeground(QColor("#2c3e50"))
             self.tabla_membresias.setItem(i, 0, cliente_item)
             
-            # Inicio - color negro
+            # Inicio - color oscuro
             inicio_item = QTableWidgetItem(membresia['fecha_inicio'])
-            inicio_item.setForeground(QColor("#000000"))
+            inicio_item.setForeground(QColor("#2c3e50"))
             self.tabla_membresias.setItem(i, 1, inicio_item)
             
-            # Vencimiento - color negro
+            # Vencimiento - color oscuro
             vencimiento_item = QTableWidgetItem(membresia['fecha_vencimiento'])
-            vencimiento_item.setForeground(QColor("#000000"))
+            vencimiento_item.setForeground(QColor("#2c3e50"))
             self.tabla_membresias.setItem(i, 2, vencimiento_item)
             
             # Estado con color
@@ -671,37 +1003,267 @@ class DashboardView(QWidget):
             estado_item = QTableWidgetItem(estado)
             
             if estado == ESTADO_ACTIVA:
-                estado_item.setForeground(QColor("#4CAF50"))
+                estado_item.setForeground(QColor("#27ae60"))
             elif estado == ESTADO_POR_VENCER:
-                estado_item.setForeground(QColor("#FF9800"))
+                estado_item.setForeground(QColor("#f39c12"))
             elif estado == ESTADO_VENCIDA:
-                estado_item.setForeground(QColor("#F44336"))
+                estado_item.setForeground(QColor("#e74c3c"))
             
             self.tabla_membresias.setItem(i, 3, estado_item)
     
     def cargar_tabla_pagos(self):
-        """Carga la tabla de últimos pagos"""
-        pagos = pago_service.obtener_ultimos_pagos(limite=5)
+        """Carga la tabla de últimos pagos con filtro de fecha"""
+        if self.filtro_fecha_desde and self.filtro_fecha_hasta:
+            pagos = pago_service.listar_pagos(
+                fecha_desde=self.filtro_fecha_desde,
+                fecha_hasta=self.filtro_fecha_hasta,
+                limite=10
+            )
+        else:
+            pagos = pago_service.obtener_ultimos_pagos(limite=10)
+        
+        # Guardar para export PDF
+        self._pagos_mostrados = pagos
         
         self.tabla_pagos.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
-            # Cliente - color negro
+            # Cliente - color oscuro
             cliente_item = QTableWidgetItem(pago['cliente_nombre'])
-            cliente_item.setForeground(QColor("#000000"))
+            cliente_item.setForeground(QColor("#2c3e50"))
             self.tabla_pagos.setItem(i, 0, cliente_item)
             
-            # Fecha - color negro
+            # Fecha - color oscuro
             fecha_item = QTableWidgetItem(pago['fecha'])
-            fecha_item.setForeground(QColor("#000000"))
+            fecha_item.setForeground(QColor("#2c3e50"))
             self.tabla_pagos.setItem(i, 1, fecha_item)
             
-            # Monto - color negro
+            # Monto - color oscuro
             monto_item = QTableWidgetItem(f"${pago['monto']:,.2f}")
-            monto_item.setForeground(QColor("#000000"))
+            monto_item.setForeground(QColor("#2c3e50"))
             self.tabla_pagos.setItem(i, 2, monto_item)
             
-            # Método - color negro
+            # Método - color oscuro
             metodo_item = QTableWidgetItem(pago['metodo'])
-            metodo_item.setForeground(QColor("#000000"))
+            metodo_item.setForeground(QColor("#2c3e50"))
             self.tabla_pagos.setItem(i, 3, metodo_item)
+    
+    # ==================== EXPORTAR PDF ====================
+    def exportar_dashboard_pdf(self):
+        """Exporta los datos visibles del dashboard a un PDF"""
+        ruta, _ = QFileDialog.getSaveFileName(
+            self, "Guardar Reporte PDF", 
+            f"Dashboard_KyoGym_{date.today().isoformat()}.pdf",
+            "PDF (*.pdf)"
+        )
+        if not ruta:
+            return
+        
+        try:
+            self._generar_pdf_dashboard(ruta)
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Éxito")
+            msg.setText("Reporte PDF exportado correctamente.")
+            msg.setStyleSheet("""
+                QMessageBox { background-color: white; }
+                QLabel { color: black; font-size: 13px; min-width: 300px; }
+                QPushButton { background-color: #27ae60; color: white; padding: 8px 20px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; min-width: 80px; }
+                QPushButton:hover { background-color: #229954; }
+            """)
+            btn_abrir = msg.addButton("Abrir PDF", QMessageBox.ActionRole)
+            msg.addButton("Cerrar", QMessageBox.RejectRole)
+            msg.exec()
+            if msg.clickedButton() == btn_abrir:
+                from utils.factura_generator import abrir_factura
+                abrir_factura(ruta)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo generar el PDF:\n{str(e)}")
+    
+    def _capturar_widget_como_imagen(self, widget, ancho_px=400, alto_px=300):
+        """Captura un widget como imagen PNG temporal"""
+        # Redimensionar a la resolución deseada antes de capturar
+        widget.resize(ancho_px, alto_px)
+        widget.repaint()
+        # grab() captura el widget pintado tal como está (API correcta de PySide6)
+        pixmap = widget.grab()
+        if pixmap.isNull():
+            # Fallback: renderizar manualmente al QPixmap (QPaintDevice, no QPainter)
+            pixmap = QPixmap(ancho_px, alto_px)
+            pixmap.fill(QColor("white"))
+            from PySide6.QtCore import QPoint, QRect as _QRect
+            widget.render(pixmap, QPoint(0, 0))
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        pixmap.save(tmp.name, 'PNG')
+        tmp.close()
+        return tmp.name
+    
+    def _generar_pdf_dashboard(self, ruta):
+        """Genera el PDF del dashboard con datos, gráficos y filtros activos"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas as pdf_canvas
+        
+        # Capturar gráficos como imágenes antes de generar el PDF
+        img_torta_membresias = self._capturar_widget_como_imagen(self.chart_torta, 350, 280)
+        img_torta_sexo = self._capturar_widget_como_imagen(self.chart_torta_sexo, 350, 280)
+        
+        try:
+            c = pdf_canvas.Canvas(ruta, pagesize=letter)
+            ancho, alto = letter
+            y = alto - 40
+            
+            # Título
+            c.setFont("Helvetica-Bold", 20)
+            c.drawString(40, y, "Reporte Dashboard - KyoGym")
+            y -= 25
+            
+            # Fecha y hora de generación
+            c.setFont("Helvetica", 10)
+            c.drawString(40, y, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+            y -= 20
+            
+            # Filtros activos
+            filtros = self.obtener_texto_filtros_activos()
+            c.setFont("Helvetica-Bold", 11)
+            c.drawString(40, y, "Filtros aplicados:")
+            y -= 15
+            c.setFont("Helvetica", 10)
+            for filtro in filtros:
+                c.drawString(55, y, f"- {filtro}")
+                y -= 14
+            y -= 10
+            
+            # Línea separadora
+            c.setStrokeColorRGB(0.8, 0.8, 0.8)
+            c.line(40, y, ancho - 40, y)
+            y -= 20
+            
+            # Métricas
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(40, y, "Resumen de Metricas")
+            y -= 20
+            c.setFont("Helvetica", 11)
+            c.drawString(55, y, f"Membresias Activas: {self.card_activas.label_valor.text()}")
+            y -= 16
+            c.drawString(55, y, f"Membresias Por Vencer: {self.card_por_vencer.label_valor.text()}")
+            y -= 16
+            c.drawString(55, y, f"Membresias Vencidas: {self.card_vencidas.label_valor.text()}")
+            y -= 16
+            c.drawString(55, y, f"Ingresos: {self.card_pagos_mes.label_valor.text()}")
+            y -= 16
+            c.drawString(55, y, f"Stock Bajo: {self.card_stock_bajo.label_valor.text()}")
+            y -= 25
+            
+            # Línea separadora
+            c.line(40, y, ancho - 40, y)
+            y -= 20
+            
+            # ===== Gráficos =====
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(40, y, "Graficos")
+            y -= 10
+            
+            img_w = 240
+            img_h = 190
+            
+            # Verificar si caben los gráficos, si no nueva página
+            if y - img_h < 80:
+                c.showPage()
+                y = alto - 40
+            
+            # Gráfico de membresías a la izquierda
+            c.setFont("Helvetica-Bold", 10)
+            c.drawString(40, y, "Membresias por estado")
+            y -= 5
+            c.drawImage(ImageReader(img_torta_membresias), 40, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+            
+            # Gráfico de sexo a la derecha
+            c.drawString(300, y + 5, "Clientes por sexo")
+            c.drawImage(ImageReader(img_torta_sexo), 300, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+            
+            y -= img_h + 20
+            
+            # Línea separadora
+            c.line(40, y, ancho - 40, y)
+            y -= 20
+            
+            # ===== Tabla de membresías =====
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(40, y, "Membresias")
+            y -= 18
+            
+            c.setFont("Helvetica-Bold", 9)
+            cols_m = [40, 180, 290, 400]
+            headers_m = ["Cliente", "Inicio", "Vencimiento", "Estado"]
+            for col, header in zip(cols_m, headers_m):
+                c.drawString(col, y, header)
+            y -= 3
+            c.line(40, y, ancho - 40, y)
+            y -= 14
+            
+            c.setFont("Helvetica", 9)
+            membresias = self._membresias_mostradas
+            for m in membresias:
+                if y < 80:
+                    c.showPage()
+                    y = alto - 40
+                c.drawString(cols_m[0], y, str(m.get('cliente_nombre', ''))[:25])
+                c.drawString(cols_m[1], y, str(m.get('fecha_inicio', '')))
+                c.drawString(cols_m[2], y, str(m.get('fecha_vencimiento', '')))
+                c.drawString(cols_m[3], y, str(m.get('estado', '')))
+                y -= 14
+            
+            if not membresias:
+                c.drawString(55, y, "Sin datos para mostrar")
+                y -= 14
+            
+            y -= 15
+            c.line(40, y, ancho - 40, y)
+            y -= 20
+            
+            # ===== Tabla de pagos =====
+            if y < 100:
+                c.showPage()
+                y = alto - 40
+            
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(40, y, "Pagos")
+            y -= 18
+            
+            c.setFont("Helvetica-Bold", 9)
+            cols_p = [40, 180, 310, 420]
+            headers_p = ["Cliente", "Fecha", "Monto", "Metodo"]
+            for col, header in zip(cols_p, headers_p):
+                c.drawString(col, y, header)
+            y -= 3
+            c.line(40, y, ancho - 40, y)
+            y -= 14
+            
+            c.setFont("Helvetica", 9)
+            pagos = self._pagos_mostrados
+            for p in pagos:
+                if y < 80:
+                    c.showPage()
+                    y = alto - 40
+                c.drawString(cols_p[0], y, str(p.get('cliente_nombre', ''))[:25])
+                c.drawString(cols_p[1], y, str(p.get('fecha', '')))
+                c.drawString(cols_p[2], y, f"${p.get('monto', 0):,.2f}")
+                c.drawString(cols_p[3], y, str(p.get('metodo', '')))
+                y -= 14
+            
+            if not pagos:
+                c.drawString(55, y, "Sin datos para mostrar")
+                y -= 14
+            
+            # Pie de página
+            c.setFont("Helvetica", 8)
+            c.drawString(40, 30, f"KyoGym - Reporte generado automaticamente el {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            
+            c.save()
+        finally:
+            # Limpiar archivos temporales de imágenes
+            for img_path in [img_torta_membresias, img_torta_sexo]:
+                try:
+                    os.unlink(img_path)
+                except OSError:
+                    pass

@@ -1,18 +1,40 @@
 """Servicio CRUD para membresías"""
 from datetime import date, timedelta
+import json
+from pathlib import Path
 from db import get_connection
 from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA, DIAS_ALERTA_VENCIMIENTO
 
 
-def calcular_estado_membresia(fecha_vencimiento_str):
+CONFIG_FILE = Path(__file__).resolve().parent.parent / "config.json"
+
+
+def obtener_dias_alerta_vencimiento():
+    """Obtiene días de alerta desde config.json con fallback seguro."""
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            dias = config.get("dias_alerta_vencimiento", DIAS_ALERTA_VENCIMIENTO)
+            dias = int(dias)
+            if dias >= 0:
+                return dias
+    except (ValueError, TypeError, json.JSONDecodeError, OSError):
+        pass
+    return DIAS_ALERTA_VENCIMIENTO
+
+
+def calcular_estado_membresia(fecha_vencimiento_str, dias_alerta=None):
     """Calcula el estado de una membresía según su fecha de vencimiento"""
     fecha_vencimiento = date.fromisoformat(fecha_vencimiento_str)
     hoy = date.today()
     dias_restantes = (fecha_vencimiento - hoy).days
+    if dias_alerta is None:
+        dias_alerta = obtener_dias_alerta_vencimiento()
     
     if dias_restantes < 0:
         return ESTADO_VENCIDA
-    elif dias_restantes <= DIAS_ALERTA_VENCIMIENTO:
+    elif dias_restantes <= dias_alerta:
         return ESTADO_POR_VENCER
     else:
         return ESTADO_ACTIVA
@@ -23,10 +45,21 @@ def crear_membresia(cliente_id, tipo="Mensual", monto=0.0, fecha_inicio=None, pa
     conn = get_connection()
     cursor = conn.cursor()
     
+    # Validar cliente_id
+    if cliente_id is None:
+        conn.close()
+        raise ValueError("cliente_id no puede ser None")
+    
     if fecha_inicio is None:
         fecha_inicio = date.today()
     elif isinstance(fecha_inicio, str):
         fecha_inicio = date.fromisoformat(fecha_inicio)
+    
+    # Asegurar que monto sea un número válido
+    try:
+        monto = float(monto) if monto is not None else 0.0
+    except (ValueError, TypeError):
+        monto = 0.0
     
     # Calcular fecha de vencimiento (30 días por defecto para mensual)
     fecha_vencimiento = fecha_inicio + timedelta(days=30)
@@ -59,7 +92,8 @@ def obtener_membresia(membresia_id):
     
     if membresia:
         membresia_dict = dict(membresia)
-        membresia_dict['estado'] = calcular_estado_membresia(membresia_dict['fecha_vencimiento'])
+        dias_alerta = obtener_dias_alerta_vencimiento()
+        membresia_dict['estado'] = calcular_estado_membresia(membresia_dict['fecha_vencimiento'], dias_alerta)
         return membresia_dict
     return None
 
@@ -85,10 +119,11 @@ def listar_membresias(cliente_id=None, estado=None):
     
     cursor.execute(query, params)
     membresias = []
+    dias_alerta = obtener_dias_alerta_vencimiento()
     
     for row in cursor.fetchall():
         membresia = dict(row)
-        membresia['estado'] = calcular_estado_membresia(membresia['fecha_vencimiento'])
+        membresia['estado'] = calcular_estado_membresia(membresia['fecha_vencimiento'], dias_alerta)
         
         # Filtrar por estado si se especifica
         if estado is None or membresia['estado'] == estado:

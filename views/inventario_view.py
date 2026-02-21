@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor
 from services import inventario_service
+from utils.validators import crear_validador_nombre, crear_validador_entero, crear_validador_numerico_decimal
 
 
 class AgregarProductoDialog(QDialog):
@@ -58,10 +59,12 @@ class AgregarProductoDialog(QDialog):
         # Nombre
         self.nombre = QLineEdit()
         self.nombre.setPlaceholderText("Ingrese el nombre del producto")
+        self.nombre.setValidator(crear_validador_nombre())
         layout.addRow("Nombre:", self.nombre)
         
         # Categoría
         self.categoria = QComboBox()
+        self.categoria.setEditable(True)
         categorias_existentes = inventario_service.obtener_categorias()
         self.categoria.addItems(["Suplementos", "Equipamiento", "Accesorios", "Bebidas", "Otros"])
         if categorias_existentes:
@@ -290,8 +293,11 @@ class InventarioView(QWidget):
         self.tabla.setColumnCount(5)
         self.tabla.setHorizontalHeaderLabels(["Nombre", "Categoría", "Cantidad", "Precio", "Acciones"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionsClickable(True)
+        self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.verticalHeader().setVisible(False)
         
@@ -327,6 +333,9 @@ class InventarioView(QWidget):
         """Carga los productos en la tabla"""
         buscar = self.buscar_input.text() if hasattr(self, 'buscar_input') else ""
         productos = inventario_service.listar_productos(buscar=buscar, categoria=self.filtro_categoria)
+
+        sorting_enabled = self.tabla.isSortingEnabled()
+        self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(productos))
         
@@ -397,6 +406,8 @@ class InventarioView(QWidget):
             acciones_layout.addWidget(btn_eliminar)
             
             self.tabla.setCellWidget(i, 4, acciones_widget)
+
+        self.tabla.setSortingEnabled(sorting_enabled)
     
     def cambiar_filtro_categoria(self, categoria, boton_activo):
         """Cambia el filtro de categoría"""

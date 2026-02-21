@@ -1,0 +1,14 @@
+{
+    "nombre_gimnasio": "KyoGym",
+    "direccion": "EL Espino ",
+    "telefono": "",
+    "email": "",
+    "rfc": "",
+    "tema": "light",
+    "notif_vencimiento": true,
+    "dias_alerta_vencimiento": 7,
+    "notif_pagos": true,
+    "notif_nuevos": true,
+    "formato_folio": "FAC-{YYYY}-{NNNN}",
+    "auto_factura": true
+}
