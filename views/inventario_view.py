@@ -64,7 +64,7 @@ class AgregarProductoDialog(QDialog):
         
         # Categoría
         self.categoria = QComboBox()
-        self.categoria.setEditable(True)
+        self.categoria.setEditable(False)
         categorias_existentes = inventario_service.obtener_categorias()
         self.categoria.addItems(["Suplementos", "Equipamiento", "Accesorios", "Bebidas", "Otros"])
         if categorias_existentes:
@@ -296,7 +296,7 @@ class InventarioView(QWidget):
         self.tabla.horizontalHeader().setSectionsClickable(True)
         self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.verticalHeader().setVisible(False)

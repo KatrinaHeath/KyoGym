@@ -7,13 +7,14 @@ import os
 import ctypes
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QPushButton, QStackedWidget, QLabel, QFrame,
-                               QDialog, QRadioButton, QButtonGroup, QDialogButtonBox, QMessageBox)
+                               QDialog, QMessageBox)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIcon, QPixmap
 
 # Inicializar base de datos
-from db import init_database
-from usuario_activo import obtener_usuario_activo, guardar_usuario_activo, USUARIOS
+from db import init_database, ensure_default_user, verify_user, get_user_role, get_user_fullname
+from usuario_activo import obtener_usuario_activo, guardar_usuario_activo
+from views.login_view import LoginDialog
 
 # Importar vistas
 from views.dashboard_view import DashboardView
@@ -49,99 +50,6 @@ class SidebarButton(QPushButton):
         """)
 
 
-class CambiarUsuarioDialog(QDialog):
-    """Diálogo para cambiar de usuario"""
-    def __init__(self, usuario_actual, parent=None):
-        super().__init__(parent)
-        self.usuario_actual = usuario_actual
-        self.setWindowTitle("Cambiar Usuario")
-        self.setMinimumWidth(350)
-        self.init_ui()
-    
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # Estilos
-        self.setStyleSheet("""
-            QDialog {
-                background-color: white;
-            }
-            QLabel {
-                color: #2c3e50;
-                font-size: 13px;
-            }
-            QRadioButton {
-                color: #2c3e50;
-                font-size: 13px;
-                padding: 10px;
-            }
-            QRadioButton::indicator {
-                width: 18px;
-                height: 18px;
-            }
-        """)
-        
-        # Título
-        titulo = QLabel("Seleccione el usuario activo:")
-        titulo.setFont(QFont("Arial", 12, QFont.Bold))
-        titulo.setStyleSheet("color: #2c3e50; margin-bottom: 10px;")
-        layout.addWidget(titulo)
-        
-        # Grupo de radio buttons
-        self.grupo_usuarios = QButtonGroup()
-        
-        for i, usuario in enumerate(USUARIOS):
-            radio = QRadioButton(f"👤 {usuario}")
-            radio.setStyleSheet("""
-                QRadioButton {
-                    padding: 10px;
-                    font-size: 14px;
-                }
-                QRadioButton:hover {
-                    background-color: #f0f0f0;
-                    border-radius: 5px;
-                }
-            """)
-            if usuario == self.usuario_actual:
-                radio.setChecked(True)
-            self.grupo_usuarios.addButton(radio, i)
-            layout.addWidget(radio)
-        
-        # Espacio
-        layout.addSpacing(20)
-        
-        # Botones
-        botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        botones.accepted.connect(self.accept)
-        botones.rejected.connect(self.reject)
-        botones.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 20px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 13px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-        layout.addWidget(botones)
-        
-        self.setLayout(layout)
-    
-    def obtener_usuario_seleccionado(self):
-        """Retorna el usuario seleccionado"""
-        boton_seleccionado = self.grupo_usuarios.checkedButton()
-        if boton_seleccionado:
-            id_seleccionado = self.grupo_usuarios.id(boton_seleccionado)
-            return USUARIOS[id_seleccionado]
-        return None
-
-
 class MainWindow(QMainWindow):
     """Ventana principal de la aplicación"""
     def __init__(self):
@@ -155,13 +63,15 @@ class MainWindow(QMainWindow):
         if os.path.exists(logo_path):
             self.setWindowIcon(QIcon(logo_path))
         
-        # Inicializar usuario activo
+        # Inicializar usuario activo y su rol
         self.usuario_activo = obtener_usuario_activo()
-        
-        # Inicializar base de datos
-        init_database()
-        
+        self.rol_usuario = get_user_role(self.usuario_activo)
+        self.nombre_completo = get_user_fullname(self.usuario_activo)
+
+        # La base de datos ya debe inicializarse antes de instanciar MainWindow
         self.init_ui()
+        self.aplicar_restricciones_rol()
+        self.ir_a_inicio()
     
     def init_ui(self):
         """Inicializa la interfaz de usuario"""
@@ -196,7 +106,7 @@ class MainWindow(QMainWindow):
             self.inventario_view = InventarioView()
             print("Creando configuración...")
             self.configuracion_view = ConfiguracionView()
-            
+            self.configuracion_view.logout_solicitado.connect(self.manejar_logout)
             self.stack.addWidget(self.dashboard_view)
             self.stack.addWidget(self.membresias_view)
             self.stack.addWidget(self.clientes_view)
@@ -302,7 +212,7 @@ class MainWindow(QMainWindow):
         return sidebar
     
     def crear_widget_perfil(self):
-        """Crea el widget de perfil de usuario"""
+        """Crea el widget de perfil de usuario en el sidebar"""
         perfil_frame = QFrame()
         perfil_frame.setStyleSheet("""
             QFrame {
@@ -310,23 +220,19 @@ class MainWindow(QMainWindow):
                 border-radius: 5px;
                 padding: 10px;
             }
-            QFrame:hover {
-                background-color: #34495e;
-            }
         """)
-        perfil_frame.setCursor(Qt.PointingHandCursor)
-        
+
         perfil_layout = QHBoxLayout(perfil_frame)
         perfil_layout.setContentsMargins(10, 10, 10, 10)
         perfil_layout.setSpacing(10)
-        
+
         # Icono de perfil
         icono_label = QLabel("👤")
         icono_label.setStyleSheet("font-size: 24px; background-color: transparent;")
         perfil_layout.addWidget(icono_label)
-        
-        # Nombre del usuario
-        self.nombre_usuario_label = QLabel(self.usuario_activo)
+
+        # Nombre del usuario (nombre completo)
+        self.nombre_usuario_label = QLabel(self.nombre_completo)
         self.nombre_usuario_label.setStyleSheet("""
             color: #ecf0f1;
             font-size: 13px;
@@ -335,51 +241,44 @@ class MainWindow(QMainWindow):
         """)
         self.nombre_usuario_label.setWordWrap(True)
         perfil_layout.addWidget(self.nombre_usuario_label, 1)
-        
-        # Hacer clickeable
-        perfil_frame.mousePressEvent = lambda event: self.mostrar_dialogo_cambiar_usuario()
-        
+
         return perfil_frame
     
-    def mostrar_dialogo_cambiar_usuario(self):
-        """Muestra diálogo para cambiar de usuario"""
-        dialog = CambiarUsuarioDialog(self.usuario_activo, self)
-        if dialog.exec():
-            nuevo_usuario = dialog.obtener_usuario_seleccionado()
-            if nuevo_usuario and nuevo_usuario != self.usuario_activo:
-                self.usuario_activo = nuevo_usuario
-                guardar_usuario_activo(nuevo_usuario)
-                self.nombre_usuario_label.setText(nuevo_usuario)
-                
-                # Mensaje de confirmación
-                msg = QMessageBox(self)
-                msg.setWindowTitle("Usuario Cambiado")
-                msg.setText(f"Usuario activo: {nuevo_usuario}")
-                msg.setStyleSheet("""
-                    QMessageBox {
-                        background-color: white;
-                    }
-                    QLabel {
-                        color: black;
-                        font-size: 13px;
-                        min-width: 300px;
-                    }
-                    QPushButton {
-                        background-color: #27ae60;
-                        color: white;
-                        padding: 8px 20px;
-                        border: none;
-                        border-radius: 4px;
-                        font-weight: bold;
-                        font-size: 13px;
-                        min-width: 80px;
-                    }
-                    QPushButton:hover {
-                        background-color: #229954;
-                    }
-                """)
-                msg.exec()
-    
+    def ir_a_inicio(self):
+        """Navega a la vista inicial según el rol del usuario."""
+        es_privilegiado = self.rol_usuario == 'admin' or self.usuario_activo == 'prueba'
+        if es_privilegiado:
+            self.cambiar_vista(0, self.btn_inicio)
+        else:
+            self.cambiar_vista(1, self.btn_membresias)
+
+    def aplicar_restricciones_rol(self):
+        """Muestra u oculta secciones según el rol del usuario activo."""
+        es_privilegiado = self.rol_usuario == 'admin' or self.usuario_activo == 'prueba'
+        self.btn_inicio.setVisible(es_privilegiado)
+        if hasattr(self, 'configuracion_view'):
+            self.configuracion_view.set_usuario(self.usuario_activo, self.rol_usuario)
+
+    def manejar_logout(self):
+        """Oculta la ventana principal y muestra el login."""
+        self.hide()
+        login = LoginDialog()
+        try:
+            login.showMaximized()
+        except Exception:
+            login.show()
+        if login.exec() == QDialog.Accepted:
+            nuevo = obtener_usuario_activo()
+            self.usuario_activo = nuevo
+            self.rol_usuario = get_user_role(nuevo)
+            self.nombre_completo = get_user_fullname(nuevo)
+            self.nombre_usuario_label.setText(self.nombre_completo)
+            self.aplicar_restricciones_rol()
+            self.showMaximized()
+            self.ir_a_inicio()
+        else:
+            self.close()
+
     def cambiar_vista(self, indice, boton):
         """Cambia la vista actual"""
         # Desmarcar todos los botones
@@ -420,8 +319,22 @@ def main():
     # Configurar estilo global
     app.setStyle("Fusion")
     
+    # Inicializar base de datos y crear usuario por defecto si es necesario
+    init_database()
+    ensure_default_user()
+
+    # Mostrar diálogo de login (maximizado)
+    login = LoginDialog()
+    try:
+        login.showMaximized()
+    except Exception:
+        # en entornos donde showMaximized no aplica, al menos maximizar la ventana
+        login.show()
+    if login.exec() != QDialog.Accepted:
+        sys.exit(0)
+
     window = MainWindow()
-    window.show()
+    window.showMaximized()
     
     sys.exit(app.exec())
 

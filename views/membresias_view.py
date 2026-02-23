@@ -109,7 +109,7 @@ class AgregarMembresiaDialog(QDialog):
         
         # Selector de cliente con autocompletado
         self.combo_cliente = QComboBox()
-        self.combo_cliente.setEditable(True)
+        self.combo_cliente.setEditable(False)
         self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)
         self.cargar_clientes()
         layout.addRow("Cliente:", self.combo_cliente)
@@ -487,7 +487,7 @@ class MembresiasView(QWidget):
         self.tabla.horizontalHeader().setSectionsClickable(True)
         self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.setStyleSheet("""

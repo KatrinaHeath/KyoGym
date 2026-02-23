@@ -1,5 +1,8 @@
 """Gestión de base de datos SQLite"""
 import sqlite3
+import hashlib
+import os
+import binascii
 from utils.constants import DB_PATH
 
 
@@ -55,6 +58,20 @@ def init_database():
             metodo TEXT NOT NULL,
             concepto TEXT,
             FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Tabla de usuarios (para login)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            full_name TEXT,
+            role TEXT DEFAULT 'user',
+            created_at DATE DEFAULT (DATE('now')),
+            active INTEGER DEFAULT 1
         )
     """)
     
@@ -120,6 +137,133 @@ def init_database():
     conn.close()
     
     print(f"Base de datos inicializada en: {DB_PATH}")
+
+
+def _hash_password(password: str, salt: bytes) -> str:
+    """Devuelve el hash hex de sha256(salt + password)."""
+    h = hashlib.sha256()
+    h.update(salt)
+    h.update(password.encode('utf-8'))
+    return h.hexdigest()
+
+
+def create_user(username: str, password: str, full_name: str = None, role: str = 'admin') -> bool:
+    """Crea un usuario en la tabla usuarios. Retorna True si se inserta."""
+    conn = get_connection()
+    cur = conn.cursor()
+    # Generar salt
+    salt = os.urandom(16)
+    salt_hex = binascii.hexlify(salt).decode('ascii')
+    pwd_hash = _hash_password(password, salt)
+    try:
+        cur.execute("""
+            INSERT INTO usuarios (username, password_hash, salt, full_name, role, created_at, active)
+            VALUES (?, ?, ?, ?, ?, DATE('now'), 1)
+        """, (username, pwd_hash, salt_hex, full_name or username, role))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error creando usuario: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def verify_user(username: str, password: str) -> bool:
+    """Verifica credenciales de usuario. Retorna True si coinciden."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password_hash, salt, active FROM usuarios WHERE username = ?", (username,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        if row['active'] == 0:
+            return False
+        salt_hex = row['salt']
+        try:
+            salt = binascii.unhexlify(salt_hex)
+        except Exception:
+            salt = salt_hex.encode('utf-8')
+        expected = row['password_hash']
+        return _hash_password(password, salt) == expected
+    finally:
+        conn.close()
+
+
+def get_user_role(username: str) -> str:
+    """Devuelve el rol del usuario ('admin', 'user', etc.) o 'user' si no existe."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT role FROM usuarios WHERE username = ? AND active = 1", (username,))
+        row = cur.fetchone()
+        return row['role'] if row else 'user'
+    finally:
+        conn.close()
+
+
+def get_user_fullname(username: str) -> str:
+    """Devuelve el nombre completo del usuario, o el username si no tiene."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT full_name FROM usuarios WHERE username = ? AND active = 1", (username,))
+        row = cur.fetchone()
+        if row and row['full_name']:
+            return row['full_name']
+        return username
+    finally:
+        conn.close()
+
+
+def get_all_users() -> list:
+    """Retorna lista de todos los usuarios activos: [{username, full_name, role}]."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT username, full_name, role FROM usuarios WHERE active = 1 ORDER BY username")
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_user(username: str) -> bool:
+    """Desactiva (elimina lógicamente) un usuario por su username. Retorna True si tuvo efecto."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE usuarios SET active = 0 WHERE username = ?", (username,))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print(f"Error eliminando usuario: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def ensure_default_user():
+    """Crea un usuario por defecto si no existe ninguno."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(1) as cnt FROM sqlite_master WHERE type='table' AND name='usuarios'")
+        # si tabla usuarios no existe, nada que hacer aquí (init_database la crea)
+        cur.execute("SELECT COUNT(1) as cnt FROM usuarios")
+        row = cur.fetchone()
+        if row and row['cnt'] == 0:
+            # Crear usuario por defecto
+            create_user('admin', 'admin123', full_name='Administrador', role='admin')
+            print('Usuario por defecto creado: admin / admin123')
+    except Exception:
+        # si algo falla, intentar crear el usuario directamente
+        try:
+            create_user('admin', 'admin123', full_name='Administrador', role='admin')
+        except Exception:
+            pass
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

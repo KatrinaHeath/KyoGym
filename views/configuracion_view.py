@@ -1,11 +1,14 @@
 """Vista de configuración del sistema"""
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                                QFrame, QLineEdit, QPushButton, QGroupBox,
-                               QFormLayout, QComboBox, QSpinBox, QCheckBox,
-                               QMessageBox, QScrollArea, QFileDialog)
-from PySide6.QtCore import Qt
+                               QFormLayout, QComboBox, QSpinBox, QCheckBox, QDialog,
+                               QMessageBox, QScrollArea, QFileDialog,
+                               QTableWidget, QTableWidgetItem, QHeaderView)
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QPixmap
 from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit, crear_validador_email
+from usuario_activo import obtener_usuario_activo
+from db import create_user, get_all_users, delete_user
 import json
 import os
 
@@ -13,12 +16,221 @@ import os
 DEFAULT_DIAS_ALERTA_VENCIMIENTO = 7
 
 
+class VerUsuariosDialog(QDialog):
+    """Diálogo que lista todos los usuarios con opción de eliminar por fila."""
+
+    def __init__(self, usuario_activo="", parent=None):
+        super().__init__(parent)
+        self.usuario_activo = usuario_activo
+        self.setWindowTitle("Usuarios del sistema")
+        self.setMinimumSize(580, 380)
+        self._init_ui()
+        self._cargar()
+
+    def _init_ui(self):
+        self.setStyleSheet("""
+            QDialog { background-color: white; }
+            QLabel { color: #2c3e50; font-size: 13px; border: none; background: transparent; }
+            QTableWidget {
+                border: 2px solid #000000; border-radius: 5px;
+                gridline-color: #e0e0e0; font-size: 13px; color: #000;
+                background-color: white;
+            }
+            QHeaderView::section {
+                background-color: #2c3e50; color: white;
+                font-weight: bold; font-size: 13px;
+                padding: 6px; border: none;
+            }
+            QPushButton#btn_cerrar {
+                background-color: #7f8c8d; color: white;
+                padding: 8px 20px; border: none;
+                border-radius: 4px; font-weight: bold; font-size: 13px;
+            }
+            QPushButton#btn_cerrar:hover { background-color: #636e72; }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(14)
+
+        titulo = QLabel("Usuarios registrados")
+        titulo.setFont(QFont("Arial", 15, QFont.Bold))
+        titulo.setStyleSheet("color: #2c3e50; margin-bottom: 4px; border: none; background: transparent;")
+        layout.addWidget(titulo)
+
+        self.tabla = QTableWidget(0, 4)
+        self.tabla.setHorizontalHeaderLabels(["Nombre completo", "Usuario", "Rol", "Acción"])
+        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.tabla.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.tabla.setColumnWidth(3, 110)
+        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla.setSelectionMode(QTableWidget.NoSelection)
+        self.tabla.verticalHeader().setVisible(False)
+        layout.addWidget(self.tabla)
+
+        btn_layout = QHBoxLayout()
+        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar.setObjectName("btn_cerrar")
+        btn_cerrar.clicked.connect(self.accept)
+        btn_layout.addWidget(btn_cerrar)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+    def _cargar(self):
+        usuarios = get_all_users()
+        self.tabla.setRowCount(len(usuarios))
+        for row, u in enumerate(usuarios):
+            username = u['username']
+            self.tabla.setItem(row, 0, QTableWidgetItem(u.get('full_name') or username))
+            self.tabla.setItem(row, 1, QTableWidgetItem(username))
+            self.tabla.setItem(row, 2, QTableWidgetItem(u['role']))
+
+            btn_del = QPushButton("🗑️ Eliminar")
+            btn_del.setStyleSheet("""
+                QPushButton {
+                    background-color: #e74c3c; color: white;
+                    padding: 4px 10px; border: none;
+                    border-radius: 4px; font-weight: bold; font-size: 12px;
+                    margin: 2px;
+                }
+                QPushButton:hover { background-color: #c0392b; }
+                QPushButton:disabled { background-color: #bdc3c7; color: #888; }
+            """)
+            if username == self.usuario_activo:
+                btn_del.setEnabled(False)
+                btn_del.setToolTip("No puedes eliminar tu propio usuario")
+            else:
+                btn_del.clicked.connect(lambda checked, usr=username: self._confirmar_eliminar(usr))
+            self.tabla.setCellWidget(row, 3, btn_del)
+
+    def _confirmar_eliminar(self, username):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Confirmar")
+        msg.setText(f"¿Eliminar el usuario \'{username}\'?\nEsta acción no se puede deshacer.")
+        msg.setStyleSheet("""
+            QMessageBox { background-color: white; }
+            QLabel { color: black; font-size: 14px; min-width: 280px; border: none; }
+            QPushButton {
+                background-color: #2c3e50; color: white;
+                padding: 8px 20px; border: none;
+                border-radius: 4px; font-weight: bold;
+                font-size: 13px; min-width: 70px;
+            }
+            QPushButton:hover { background-color: #3d5166; }
+        """)
+        btn_si = msg.addButton("Sí", QMessageBox.YesRole)
+        btn_no = msg.addButton("No", QMessageBox.NoRole)
+        msg.setDefaultButton(btn_no)
+        msg.exec()
+        if msg.clickedButton() != btn_si:
+            return
+        ok = delete_user(username)
+        if ok:
+            self._cargar()
+        else:
+            QMessageBox.critical(self, "Error", "No se pudo eliminar el usuario.")
+
+
+class CrearUsuarioDialog(QDialog):
+    """Diálogo para crear un nuevo usuario del sistema."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Crear nuevo usuario")
+        self.setMinimumWidth(420)
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setStyleSheet("""
+            QDialog { background-color: white; }
+            QLabel { color: #2c3e50; font-size: 13px; }
+            QLineEdit, QComboBox {
+                padding: 7px; font-size: 13px; color: #000;
+                border: 2px solid #000000; border-radius: 5px;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #27ae60; color: white;
+                padding: 10px 24px; border: none;
+                border-radius: 5px; font-weight: bold; font-size: 13px;
+            }
+            QPushButton:hover { background-color: #229954; }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(14)
+
+        titulo = QLabel("Nuevo usuario")
+        titulo.setFont(QFont("Arial", 15, QFont.Bold))
+        titulo.setStyleSheet("color: #2c3e50; margin-bottom: 6px;")
+        layout.addWidget(titulo)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self.txt_username = QLineEdit()
+        self.txt_username.setPlaceholderText("Nombre de usuario")
+        form.addRow("Usuario:", self.txt_username)
+
+        self.txt_nombre = QLineEdit()
+        self.txt_nombre.setPlaceholderText("Nombre completo (opcional)")
+        form.addRow("Nombre completo:", self.txt_nombre)
+
+        self.txt_password = QLineEdit()
+        self.txt_password.setEchoMode(QLineEdit.Password)
+        self.txt_password.setPlaceholderText("Contraseña")
+        form.addRow("Contraseña:", self.txt_password)
+
+        self.txt_password2 = QLineEdit()
+        self.txt_password2.setEchoMode(QLineEdit.Password)
+        self.txt_password2.setPlaceholderText("Repetir contraseña")
+        form.addRow("Confirmar:", self.txt_password2)
+
+        self.cmb_rol = QComboBox()
+        self.cmb_rol.addItems(["user", "admin"])
+        self.cmb_rol.setEditable(False)
+        form.addRow("Rol:", self.cmb_rol)
+
+        layout.addLayout(form)
+
+        btn_crear = QPushButton("➕ Crear usuario")
+        btn_crear.clicked.connect(self._crear)
+        layout.addWidget(btn_crear)
+
+    def _crear(self):
+        username = self.txt_username.text().strip()
+        nombre = self.txt_nombre.text().strip() or username
+        password = self.txt_password.text()
+        password2 = self.txt_password2.text()
+        role = self.cmb_rol.currentText()
+
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Usuario y contraseña son obligatorios.")
+            return
+        if password != password2:
+            QMessageBox.warning(self, "Error", "Las contraseñas no coinciden.")
+            return
+
+        ok = create_user(username, password, full_name=nombre, role=role)
+        if ok:
+            QMessageBox.information(self, "Éxito",
+                f"Usuario \'{username}\' creado correctamente con rol \'{role}\'.")
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Error",
+                "No se pudo crear el usuario. Es posible que ya exista.")
+
+
 class ConfiguracionView(QWidget):
     """Vista de configuración del sistema"""
+    logout_solicitado = Signal()
+
     def __init__(self):
         super().__init__()
         self.config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
         self.logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png")
+        self._usuario_activo = ""
         self.init_ui()
         self.cargar_configuracion()
     
@@ -65,7 +277,12 @@ class ConfiguracionView(QWidget):
         
         # Configuración de Facturas
         layout.addWidget(self.crear_grupo_facturas())
-        
+
+        # Gestión de Usuarios (solo admin / prueba)
+        self._grupo_usuarios = self._crear_grupo_usuarios()
+        self._grupo_usuarios.setVisible(False)
+        layout.addWidget(self._grupo_usuarios)
+
         # Botones de acción
         botones_layout = QHBoxLayout()
         
@@ -107,6 +324,25 @@ class ConfiguracionView(QWidget):
         
         botones_layout.addWidget(btn_guardar)
         botones_layout.addWidget(btn_reset)
+        # Botón para cerrar sesión
+        btn_cerrar = QPushButton("🔒 Cerrar sesión")
+        btn_cerrar.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+                color: white;
+            }
+        """)
+        btn_cerrar.clicked.connect(self.cerrar_sesion)
+        botones_layout.addWidget(btn_cerrar)
         botones_layout.addStretch()
         
         layout.addLayout(botones_layout)
@@ -121,6 +357,88 @@ class ConfiguracionView(QWidget):
             }
         """)
     
+    def _crear_grupo_usuarios(self):
+        """Crea el grupo de gestión de usuarios."""
+        grupo = QGroupBox("👥 Gestión de Usuarios")
+        grupo.setStyleSheet("""
+            QGroupBox {
+                font-size: 16px;
+                font-weight: bold;
+                color: #000000;
+                background-color: white;
+                border: 2px solid #000000;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        layout = QVBoxLayout(grupo)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        lbl = QLabel("Administra los usuarios que pueden acceder al sistema.")
+        lbl.setStyleSheet("color: #555; font-size: 13px;")
+        layout.addWidget(lbl)
+
+        btns_layout = QHBoxLayout()
+
+        btn_crear = QPushButton("➕ Crear nuevo usuario")
+        btn_crear.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #2471a3; }
+        """)
+        btn_crear.clicked.connect(self._abrir_crear_usuario)
+        btns_layout.addWidget(btn_crear)
+
+        btn_ver = QPushButton("👥 Ver usuarios")
+        btn_ver.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #229954; }
+        """)
+        btn_ver.clicked.connect(self._abrir_ver_usuarios)
+        btns_layout.addWidget(btn_ver)
+        btns_layout.addStretch()
+
+        layout.addLayout(btns_layout)
+        return grupo
+
+    def _abrir_crear_usuario(self):
+        """Abre el diálogo para crear un usuario."""
+        dialog = CrearUsuarioDialog(self)
+        dialog.exec()
+
+    def _abrir_ver_usuarios(self):
+        """Abre el diálogo para ver y eliminar usuarios."""
+        dialog = VerUsuariosDialog(usuario_activo=self._usuario_activo, parent=self)
+        dialog.exec()
+
+    def set_usuario(self, username: str, role: str):
+        """Muestra u oculta la sección de usuarios según el rol."""
+        self._usuario_activo = username
+        es_privilegiado = role == 'admin' or username == 'prueba'
+        self._grupo_usuarios.setVisible(es_privilegiado)
+
     def crear_grupo_gimnasio(self):
         """Crea el grupo de información del gimnasio"""
         grupo = QGroupBox("📋 Información del Gimnasio")
@@ -367,7 +685,7 @@ class ConfiguracionView(QWidget):
         widget.setStyleSheet("""
             QLineEdit, QSpinBox, QComboBox {
                 padding: 10px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #bdc3c7;
                 border-radius: 6px;
                 background-color: white;
                 color: #000000;
@@ -798,9 +1116,39 @@ class ConfiguracionView(QWidget):
             self.txt_direccion.setText("")
             self.txt_telefono.setText("")
             self.txt_email.setText("")
+            # Restablecer demás campos
             self.txt_rfc.setText("")
             self.chk_notif_vencimiento.setChecked(True)
             self.chk_notif_pagos.setChecked(True)
             self.chk_notif_nuevos.setChecked(True)
             self.txt_formato_folio.setText("FAC-{YYYY}-{NNNN}")
             self.chk_auto_factura.setChecked(True)
+            
+    def cerrar_sesion(self):
+        """Cierra la sesión actual y regresa al login."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Confirmar")
+        msg.setText("¿Desea cerrar la sesión actual?")
+        msg.setStyleSheet("""
+            QMessageBox { background-color: white; }
+            QLabel { color: black; font-size: 14px; min-width: 280px; border: none; }
+            QPushButton {
+                background-color: #2c3e50;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover { background-color: #3d5166; }
+        """)
+        btn_si = msg.addButton("Sí", QMessageBox.YesRole)
+        msg.addButton("No", QMessageBox.NoRole)
+        msg.exec()
+        if msg.clickedButton() != btn_si:
+            return
+
+        # Emitir señal para que MainWindow gestione el regreso al login
+        self.logout_solicitado.emit()

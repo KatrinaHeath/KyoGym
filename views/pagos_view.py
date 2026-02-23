@@ -110,7 +110,7 @@ class RegistrarPagoDialog(QDialog):
         
         # Selector de cliente con autocompletado
         self.combo_cliente = QComboBox()
-        self.combo_cliente.setEditable(True)  # Hacer editable para escribir
+        self.combo_cliente.setEditable(False)
         self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)  # No insertar nuevos items
         self.cargar_clientes()
         layout.addRow("Cliente:", self.combo_cliente)
@@ -532,7 +532,7 @@ class PagosView(QWidget):
         self.tabla.horizontalHeader().setSectionsClickable(True)
         self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.setStyleSheet("""

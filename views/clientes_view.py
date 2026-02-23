@@ -394,7 +394,7 @@ class ClientesView(QWidget):
         self.tabla.horizontalHeader().setSectionsClickable(True)
         self.tabla.horizontalHeader().setSortIndicatorShown(True)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.verticalHeader().setVisible(False)

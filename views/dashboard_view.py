@@ -40,6 +40,7 @@ class StatCard(QFrame):
                 background-color: {color};
                 border-radius: 25px;
                 font-size: 24px;
+                border: none;
             }}
         """)
         layout.addWidget(icon_label)
@@ -50,7 +51,7 @@ class StatCard(QFrame):
         
         # Título
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #7f8c8d; font-size: 14px; font-weight: normal;")
+        title_label.setStyleSheet("color: #7f8c8d; font-size: 14px; font-weight: normal; border: none; background-color: transparent;")
         
         # Valor
         value_label = QLabel(str(value))
@@ -58,11 +59,13 @@ class StatCard(QFrame):
             color: #2c3e50;
             font-size: 36px;
             font-weight: bold;
+            border: none;
+            background-color: transparent;
         """)
         
         # Información extra
         extra_label = QLabel(extra_info)
-        extra_label.setStyleSheet("color: #95a5a6; font-size: 12px;")
+        extra_label.setStyleSheet("color: #95a5a6; font-size: 12px; border: none; background-color: transparent;")
         extra_label.setWordWrap(True)
         
         text_layout.addWidget(title_label)
@@ -728,7 +731,7 @@ class DashboardView(QWidget):
         self.tabla_membresias.setHorizontalHeaderLabels(["Cliente", "Inicio", "Vencimiento", "Estado"])
         self.tabla_membresias.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla_membresias.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla_membresias.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla_membresias.setSelectionMode(QTableWidget.NoSelection)
         self.tabla_membresias.verticalHeader().setVisible(False)
         self.tabla_membresias.setMinimumHeight(150)
         self.tabla_membresias.setStyleSheet("""
@@ -782,7 +785,7 @@ class DashboardView(QWidget):
         self.tabla_pagos.setHorizontalHeaderLabels(["Cliente", "Fecha", "Monto", "Método"])
         self.tabla_pagos.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla_pagos.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla_pagos.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla_pagos.setSelectionMode(QTableWidget.NoSelection)
         self.tabla_pagos.verticalHeader().setVisible(False)
         self.tabla_pagos.setMinimumHeight(150)
         self.tabla_pagos.setStyleSheet("""
@@ -821,7 +824,9 @@ class DashboardView(QWidget):
     def actualizar_reloj(self):
         """Actualiza el reloj del sistema cada segundo"""
         ahora = datetime.now()
-        self.label_reloj.setText(ahora.strftime("🕐 %d/%m/%Y  %H:%M:%S"))
+        # Evitar pasar caracteres Unicode no-ASCII a strftime (puede fallar en algunas locales)
+        time_str = ahora.strftime("%d/%m/%Y  %H:%M:%S")
+        self.label_reloj.setText("🕐 " + time_str)
     
     def aplicar_filtro_fecha(self):
         """Aplica el filtro de fecha seleccionado"""
