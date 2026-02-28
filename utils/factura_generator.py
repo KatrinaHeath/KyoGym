@@ -13,6 +13,7 @@ import sys
 # Importar función para obtener usuario activo
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from usuario_activo import obtener_usuario_activo
+from db import get_user_fullname
 
 
 def generar_factura_membresia(membresia, cliente, ruta_salida=None):
@@ -111,7 +112,8 @@ def generar_factura_membresia(membresia, cliente, ruta_salida=None):
     # Atendió
     c.setFont(fuente_normal, 8)
     usuario_actual = obtener_usuario_activo()
-    atendio = f"Atendió: {usuario_actual}"
+    nombre_cajero = get_user_fullname(usuario_actual) or usuario_actual
+    atendio = f"Atendió: {nombre_cajero}"
     ancho_texto = c.stringWidth(atendio, fuente_normal, 8)
     x_centrado = (ancho_ticket - ancho_texto) / 2
     c.drawString(x_centrado, y_pos, atendio)
@@ -344,7 +346,8 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     # Atendió
     c.setFont(fuente_normal, 8)
     usuario_actual = obtener_usuario_activo()
-    atendio = f"Atendió: {usuario_actual}"
+    nombre_cajero = get_user_fullname(usuario_actual) or usuario_actual
+    atendio = f"Atendió: {nombre_cajero}"
     ancho_texto = c.stringWidth(atendio, fuente_normal, 8)
     x_centrado = (ancho_ticket - ancho_texto) / 2
     c.drawString(x_centrado, y_pos, atendio)

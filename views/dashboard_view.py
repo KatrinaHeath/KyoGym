@@ -3,13 +3,33 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
                                QLineEdit, QPushButton, QDateEdit, QMessageBox,
                                QFileDialog)
-from PySide6.QtCore import Qt, QTimer, QRect, QDate
+from PySide6.QtCore import Qt, QTimer, QRect, QDate, QThread, Signal
 from PySide6.QtGui import QFont, QPainter, QColor, QPen, QBrush, QPixmap
 from services import membresia_service, pago_service, cliente_service
 from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA
+from utils.table_styles import aplicar_estilo_tabla_moderna
 from datetime import date, datetime
 import math, tempfile, os
 from services.inventario_service import obtener_stock_bajo
+
+
+class SyncWorker(QThread):
+    """Hilo que ejecuta la sincronización con Google Drive sin bloquear la UI"""
+    terminado = Signal(bool, str)  # (exito, mensaje)
+
+    def run(self):
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from sync_onedrive_personal import OneDriveSyncPersonal
+            syncer = OneDriveSyncPersonal()
+            ok = syncer.sync()
+            if ok:
+                self.terminado.emit(True, "✅ Excel sincronizado con Google Drive correctamente.")
+            else:
+                self.terminado.emit(False, "❌ No se pudo sincronizar. Revisa la consola para más detalles.")
+        except Exception as e:
+            self.terminado.emit(False, f"❌ Error: {str(e)}")
 
 
 # ---------- TARJETA ESTADÍSTICA MODERNA ----------
@@ -21,9 +41,9 @@ class StatCard(QFrame):
         self.setFixedHeight(130)
         self.setStyleSheet(f"""
             QFrame {{
-                background-color: white;
+                background-color: #f5f5f5;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d8d8d8;
             }}
         """)
         
@@ -51,12 +71,12 @@ class StatCard(QFrame):
         
         # Título
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #7f8c8d; font-size: 14px; font-weight: normal; border: none; background-color: transparent;")
+        title_label.setStyleSheet("color: #666666; font-size: 14px; font-weight: normal; border: none; background-color: transparent;")
         
         # Valor
         value_label = QLabel(str(value))
         value_label.setStyleSheet(f"""
-            color: #2c3e50;
+            color: #1a1a1a;
             font-size: 36px;
             font-weight: bold;
             border: none;
@@ -65,7 +85,7 @@ class StatCard(QFrame):
         
         # Información extra
         extra_label = QLabel(extra_info)
-        extra_label.setStyleSheet("color: #95a5a6; font-size: 12px; border: none; background-color: transparent;")
+        extra_label.setStyleSheet("color: #666666; font-size: 12px; border: none; background-color: transparent;")
         extra_label.setWordWrap(True)
         
         text_layout.addWidget(title_label)
@@ -118,10 +138,10 @@ class SimpleBarChart(QWidget):
             bar_height = (value / max_value) * (height - 2 * margin)
             y = height - margin - bar_height
             
-            painter.fillRect(int(x), int(y), int(bar_width * 0.6), int(bar_height), QColor("#95a5a6"))
+            painter.fillRect(int(x), int(y), int(bar_width * 0.6), int(bar_height), QColor("#555555"))
             
             # Etiqueta del mes
-            painter.setPen(QColor("#666"))
+            painter.setPen(QColor("#666666"))
             painter.drawText(int(x), height - margin + 20, int(bar_width * 0.6), 20,
                            Qt.AlignCenter, self.labels[i])
 
@@ -132,7 +152,7 @@ class SimplePieChart(QWidget):
         super().__init__()
         self.setMinimumHeight(200)
         self.setMinimumWidth(200)
-        self.setStyleSheet("background-color: white;")
+        self.setStyleSheet("background-color: #f5f5f5;")
         self.datos = [
             ("Activa", 0, QColor("#4CAF50")),
             ("Por Vencer", 0, QColor("#FF9800")),
@@ -189,7 +209,7 @@ class SimplePieChart(QWidget):
         # Si no hay datos, mostrar círculo gris
         if total == 0:
             painter.setBrush(QBrush(QColor("#e0e0e0")))
-            painter.setPen(QPen(Qt.white, 2))
+            painter.setPen(QPen(QColor("#f0f0f0"), 2))
             painter.drawEllipse(int(x), int(y), int(size), int(size))
         else:
             # Dibujar sectores normales primero
@@ -201,7 +221,7 @@ class SimplePieChart(QWidget):
                     # Dibujar todos los sectores con tamaño normal
                     if i != self.sector_bajo_cursor:
                         painter.setBrush(QBrush(color))
-                        painter.setPen(QPen(Qt.white, 2))
+                        painter.setPen(QPen(QColor("#f0f0f0"), 2))
                         painter.drawPie(int(x), int(y), int(size), int(size), start_angle, span_angle)
                     
                     start_angle += span_angle
@@ -220,7 +240,7 @@ class SimplePieChart(QWidget):
                             larger_y = y - self.size_increment_actual / 2
                             
                             painter.setBrush(QBrush(color))
-                            painter.setPen(QPen(Qt.white, 3))  # Borde más grueso
+                            painter.setPen(QPen(QColor("#f0f0f0"), 3))  # Borde más grueso
                             painter.drawPie(int(larger_x), int(larger_y), int(larger_size), int(larger_size), start_angle, span_angle)
                             break
                         
@@ -243,8 +263,8 @@ class SimplePieChart(QWidget):
             # Cuadrado de color
             painter.fillRect(int(legend_x), int(legend_y), 15, 15, color)
 
-            # Texto negro
-            painter.setPen(QColor("#000000"))
+            # Texto leyenda (claro sobre fondo oscuro)
+            painter.setPen(QColor("#333333"))
             painter.drawText(int(legend_x + 21), int(legend_y + 12), texto)
 
             legend_x += anchos_items[i] + separacion
@@ -363,56 +383,58 @@ class DashboardView(QWidget):
         # Estilos generales
         self.setStyleSheet("""
             QWidget {
-                background-color: #f5f5f5;
+                background-color: #f8f8f8;
                 font-family: Arial, sans-serif;
             }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_prevmonth,
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_nextmonth {
                 qproperty-icon: none;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QAbstractItemView:enabled[isHeaderRow="true"] {
-                color: white;
+                color: #555555;
                 font-weight: bold;
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
         """)
         
@@ -425,7 +447,7 @@ class DashboardView(QWidget):
         
         titulo = QLabel("Dashboard")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #2c3e50; background-color: transparent;")
+        titulo.setStyleSheet("color: #1a1a1a; background-color: transparent;")
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
@@ -433,7 +455,7 @@ class DashboardView(QWidget):
         # Reloj del sistema
         self.label_reloj = QLabel()
         self.label_reloj.setFont(QFont("Arial", 14))
-        self.label_reloj.setStyleSheet("color: #2c3e50; background-color: transparent;")
+        self.label_reloj.setStyleSheet("color: #555555; background-color: transparent;")
         self.actualizar_reloj()
         header_layout.addWidget(self.label_reloj)
         
@@ -458,6 +480,32 @@ class DashboardView(QWidget):
         """)
         btn_exportar_pdf.clicked.connect(self.exportar_dashboard_pdf)
         header_layout.addWidget(btn_exportar_pdf)
+
+        header_layout.addSpacing(8)
+
+        # Botón sincronizar Google Drive
+        self.btn_sync = QPushButton("☁️ Sincronizar Drive")
+        self.btn_sync.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                padding: 8px 18px;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #219a52;
+                color: white;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                color: white;
+            }
+        """)
+        self.btn_sync.clicked.connect(self.sincronizar_google_drive)
+        header_layout.addWidget(self.btn_sync)
         
         layout.addLayout(header_layout)
         
@@ -465,9 +513,9 @@ class DashboardView(QWidget):
         filtros_fecha_frame = QFrame()
         filtros_fecha_frame.setStyleSheet("""
             QFrame {
-                background-color: white;
+                background-color: #f5f5f5;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d8d8d8;
             }
         """)
         filtros_fecha_layout = QHBoxLayout(filtros_fecha_frame)
@@ -475,79 +523,83 @@ class DashboardView(QWidget):
         filtros_fecha_layout.setSpacing(10)
         
         label_filtros = QLabel("📅 Filtrar por fecha:")
-        label_filtros.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 13px; border: none;")
+        label_filtros.setStyleSheet("color: #555555; font-weight: bold; font-size: 13px; border: none;")
         filtros_fecha_layout.addWidget(label_filtros)
         
         estilo_date = """
             QDateEdit {
                 padding: 6px 10px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
+                background-color: #f5f5f5;
                 font-size: 12px;
-                color: #2c3e50;
+                color: #2c2c2c;
                 min-width: 120px;
             }
-            QDateEdit:focus { border: 2px solid #3498db; }
+            QDateEdit:focus { border: 2px solid #c0c0c0; }
             QDateEdit::drop-down { border: none; }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
         """
         
         label_desde = QLabel("Desde:")
-        label_desde.setStyleSheet("color: #7f8c8d; font-size: 12px; border: none;")
+        label_desde.setStyleSheet("color: #666666; font-size: 12px; border: none;")
         filtros_fecha_layout.addWidget(label_desde)
         
         self.date_desde = QDateEdit()
         self.date_desde.setCalendarPopup(True)
         self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_desde.setDisplayFormat("dd/MM/yyyy")
         self.date_desde.setStyleSheet(estilo_date)
         filtros_fecha_layout.addWidget(self.date_desde)
         
         label_hasta = QLabel("Hasta:")
-        label_hasta.setStyleSheet("color: #7f8c8d; font-size: 12px; border: none;")
+        label_hasta.setStyleSheet("color: #666666; font-size: 12px; border: none;")
         filtros_fecha_layout.addWidget(label_hasta)
         
         self.date_hasta = QDateEdit()
         self.date_hasta.setCalendarPopup(True)
         self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setDisplayFormat("dd/MM/yyyy")
         self.date_hasta.setStyleSheet(estilo_date)
         filtros_fecha_layout.addWidget(self.date_hasta)
         
@@ -577,7 +629,7 @@ class DashboardView(QWidget):
         
         # Etiqueta de filtros activos
         self.label_filtros_activos = QLabel("")
-        self.label_filtros_activos.setStyleSheet("color: #8e44ad; font-size: 11px; font-style: italic; border: none;")
+        self.label_filtros_activos.setStyleSheet("color: #555555; font-size: 11px; font-style: italic; border: none;")
         filtros_fecha_layout.addWidget(self.label_filtros_activos)
         
         filtros_fecha_layout.addStretch()
@@ -612,9 +664,9 @@ class DashboardView(QWidget):
         frame_torta_membresias = QFrame()
         frame_torta_membresias.setStyleSheet("""
             QFrame {
-                background-color: white;
+                background-color: #f5f5f5;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d8d8d8;
             }
         """)
         layout_torta_membresias = QVBoxLayout(frame_torta_membresias)
@@ -623,7 +675,7 @@ class DashboardView(QWidget):
         # Título del gráfico
         titulo_torta_membresias = QLabel("Membresías")
         titulo_torta_membresias.setFont(QFont("Arial", 14, QFont.Bold))
-        titulo_torta_membresias.setStyleSheet("color: #2c3e50; padding: 5px;")
+        titulo_torta_membresias.setStyleSheet("color: #1a1a1a; padding: 5px;")
         layout_torta_membresias.addWidget(titulo_torta_membresias)
         
         self.chart_torta = SimplePieChart()
@@ -635,9 +687,9 @@ class DashboardView(QWidget):
         frame_torta_sexo = QFrame()
         frame_torta_sexo.setStyleSheet("""
             QFrame {
-                background-color: white;
+                background-color: #f5f5f5;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d8d8d8;
             }
         """)
         layout_torta_sexo = QVBoxLayout(frame_torta_sexo)
@@ -646,7 +698,7 @@ class DashboardView(QWidget):
         # Título del gráfico
         titulo_torta_sexo = QLabel("Clientes por sexo")
         titulo_torta_sexo.setFont(QFont("Arial", 14, QFont.Bold))
-        titulo_torta_sexo.setStyleSheet("color: #2c3e50; padding: 5px;")
+        titulo_torta_sexo.setStyleSheet("color: #1a1a1a; padding: 5px;")
         layout_torta_sexo.addWidget(titulo_torta_sexo)
         
         self.chart_torta_sexo = SimplePieChart()
@@ -664,9 +716,9 @@ class DashboardView(QWidget):
         frame_membresias = QFrame()
         frame_membresias.setStyleSheet("""
             QFrame {
-                background-color: white;
+                background-color: #f5f5f5;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d8d8d8;
             }
         """)
         layout_membresias = QVBoxLayout(frame_membresias)
@@ -674,7 +726,7 @@ class DashboardView(QWidget):
         
         label_membresias = QLabel("Membresías")
         label_membresias.setFont(QFont("Arial", 14, QFont.Bold))
-        label_membresias.setStyleSheet("color: #2c3e50;")
+        label_membresias.setStyleSheet("color: #1a1a1a;")
         layout_membresias.addWidget(label_membresias)
         
         # Filtros de membresías
@@ -684,7 +736,7 @@ class DashboardView(QWidget):
         estilo_botones = """
             QPushButton {
                 background-color: transparent;
-                color: #7f8c8d;
+                color: #666666;
                 padding: 6px 14px;
                 border: none;
                 border-bottom: 2px solid transparent;
@@ -692,13 +744,13 @@ class DashboardView(QWidget):
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #ecf0f1;
-                color: #2c3e50;
+                background-color: #eeeeee;
+                color: #555555;
             }
             QPushButton:checked {
                 background-color: transparent;
-                color: #3498db;
-                border-bottom: 2px solid #3498db;
+                color: #555555;
+                border-bottom: 2px solid #c0c0c0;
             }
         """
         
@@ -734,31 +786,7 @@ class DashboardView(QWidget):
         self.tabla_membresias.setSelectionMode(QTableWidget.NoSelection)
         self.tabla_membresias.verticalHeader().setVisible(False)
         self.tabla_membresias.setMinimumHeight(150)
-        self.tabla_membresias.setStyleSheet("""
-            QTableWidget {
-                gridline-color: transparent;
-                font-size: 12px;
-                border: none;
-                background-color: white;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #ecf0f1;
-                color: #2c3e50;
-            }
-            QTableWidget::item:selected {
-                background-color: #ebf5fb;
-            }
-            QHeaderView::section {
-                background-color: #f8f9fa;
-                color: #7f8c8d;
-                padding: 10px;
-                font-weight: bold;
-                border: none;
-                border-bottom: 1px solid #e0e0e0;
-                font-size: 11px;
-            }
-        """)
+        aplicar_estilo_tabla_moderna(self.tabla_membresias, compacta=True, embebida=True)
         layout_membresias.addWidget(self.tabla_membresias)
         
         tablas_layout.addWidget(frame_membresias, 3)
@@ -767,9 +795,9 @@ class DashboardView(QWidget):
         frame_pagos = QFrame()
         frame_pagos.setStyleSheet("""
             QFrame {
-                background-color: white;
+                background-color: #f5f5f5;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d8d8d8;
             }
         """)
         layout_pagos = QVBoxLayout(frame_pagos)
@@ -777,7 +805,7 @@ class DashboardView(QWidget):
         
         label_pagos = QLabel("Últimos Pagos")
         label_pagos.setFont(QFont("Arial", 14, QFont.Bold))
-        label_pagos.setStyleSheet("color: #2c3e50;")
+        label_pagos.setStyleSheet("color: #1a1a1a;")
         layout_pagos.addWidget(label_pagos)
         
         self.tabla_pagos = QTableWidget()
@@ -788,31 +816,7 @@ class DashboardView(QWidget):
         self.tabla_pagos.setSelectionMode(QTableWidget.NoSelection)
         self.tabla_pagos.verticalHeader().setVisible(False)
         self.tabla_pagos.setMinimumHeight(150)
-        self.tabla_pagos.setStyleSheet("""
-            QTableWidget {
-                gridline-color: transparent;
-                font-size: 12px;
-                border: none;
-                background-color: white;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #ecf0f1;
-                color: #2c3e50;
-            }
-            QTableWidget::item:selected {
-                background-color: #ebf5fb;
-            }
-            QHeaderView::section {
-                background-color: #f8f9fa;
-                color: #7f8c8d;
-                padding: 10px;
-                font-weight: bold;
-                border: none;
-                border-bottom: 1px solid #e0e0e0;
-                font-size: 11px;
-            }
-        """)
+        aplicar_estilo_tabla_moderna(self.tabla_pagos, compacta=True, embebida=True)
         layout_pagos.addWidget(self.tabla_pagos)
         
         tablas_layout.addWidget(frame_pagos, 2)
@@ -827,6 +831,24 @@ class DashboardView(QWidget):
         # Evitar pasar caracteres Unicode no-ASCII a strftime (puede fallar en algunas locales)
         time_str = ahora.strftime("%d/%m/%Y  %H:%M:%S")
         self.label_reloj.setText("🕐 " + time_str)
+
+    def sincronizar_google_drive(self):
+        """Lanza la sincronización en un hilo separado"""
+        self.btn_sync.setEnabled(False)
+        self.btn_sync.setText("⏳ Sincronizando...")
+
+        self.sync_worker = SyncWorker()
+        self.sync_worker.terminado.connect(self._on_sync_terminado)
+        self.sync_worker.start()
+
+    def _on_sync_terminado(self, exito, mensaje):
+        """Se ejecuta cuando termina la sincronización"""
+        self.btn_sync.setEnabled(True)
+        self.btn_sync.setText("☁️ Sincronizar Drive")
+        if exito:
+            QMessageBox.information(self, "Sincronización", mensaje)
+        else:
+            QMessageBox.warning(self, "Error de sincronización", mensaje)
     
     def aplicar_filtro_fecha(self):
         """Aplica el filtro de fecha seleccionado"""
@@ -883,7 +905,8 @@ class DashboardView(QWidget):
             todas = membresia_service.listar_membresias()
             filtradas = [
                 m for m in todas
-                if self.filtro_fecha_desde <= date.fromisoformat(m['fecha_vencimiento']) <= self.filtro_fecha_hasta
+                if date.fromisoformat(m['fecha_inicio']) <= self.filtro_fecha_hasta
+                and date.fromisoformat(m['fecha_vencimiento']) >= self.filtro_fecha_desde
             ]
             conteo = {ESTADO_ACTIVA: 0, ESTADO_POR_VENCER: 0, ESTADO_VENCIDA: 0}
             for m in filtradas:
@@ -973,11 +996,12 @@ class DashboardView(QWidget):
         else:
             membresias = membresia_service.listar_membresias()
         
-        # Filtrar por rango de fecha de vencimiento si aplica
+        # Filtrar por rango de fecha: membresia activa en algun momento del rango
         if self.filtro_fecha_desde and self.filtro_fecha_hasta:
             membresias = [
                 m for m in membresias
-                if self.filtro_fecha_desde <= date.fromisoformat(m['fecha_vencimiento']) <= self.filtro_fecha_hasta
+                if date.fromisoformat(m['fecha_inicio']) <= self.filtro_fecha_hasta
+                and date.fromisoformat(m['fecha_vencimiento']) >= self.filtro_fecha_desde
             ]
         
         # Guardar para export PDF

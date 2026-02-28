@@ -10,6 +10,8 @@ from pathlib import Path
 from services import membresia_service, cliente_service
 from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA
 from utils.factura_generator import generar_factura_membresia, abrir_factura
+from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
+from utils.table_styles import aplicar_estilo_tabla_moderna
 from utils.validators import crear_validador_numerico_decimal
 
 
@@ -31,86 +33,100 @@ class AgregarMembresiaDialog(QDialog):
         # Estilos para el diálogo
         self.setStyleSheet("""
             QDialog {
-                background-color: white;
+                background-color: #f5f5f5;
             }
             QLabel {
-                color: #2c3e50;
+                color: #2c2c2c;
                 font-size: 13px;
             }
             QLineEdit, QComboBox, QDateEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
-                color: #2c3e50;
+                background-color: #f5f5f5;
+                color: #1a1a1a;
                 font-size: 13px;
             }
             QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
-                border: 2px solid #3498db;
+                border: 2px solid #c0c0c0;
             }
             QComboBox QAbstractItemView {
-                color: black;
-                background-color: white;
-                selection-background-color: #3498db;
-                selection-color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
+                selection-background-color: #808080;
+                selection-color: white;
             }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_prevmonth,
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_nextmonth {
                 qproperty-icon: none;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QAbstractItemView:enabled[isHeaderRow="true"] {
-                color: white;
+                color: #555555;
                 font-weight: bold;
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
             QPushButton {
-                color: black;
+                background-color: #2c3e50;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #3d5166;
             }
         """)
         
-        # Selector de cliente con autocompletado
+        # Selector de cliente con búsqueda en tiempo real
         self.combo_cliente = QComboBox()
-        self.combo_cliente.setEditable(False)
+        self.combo_cliente.setEditable(True)
         self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)
+        self.combo_cliente.lineEdit().setPlaceholderText("Escribe para buscar...")
+        self.combo_cliente.lineEdit().setClearButtonEnabled(True)
         self.cargar_clientes()
         layout.addRow("Cliente:", self.combo_cliente)
         
@@ -118,6 +134,7 @@ class AgregarMembresiaDialog(QDialog):
         self.fecha_inicio = QDateEdit()
         self.fecha_inicio.setDate(QDate.currentDate())
         self.fecha_inicio.setCalendarPopup(True)
+        self.fecha_inicio.setDisplayFormat("dd/MM/yyyy")
         layout.addRow("Fecha Inicio:", self.fecha_inicio)
         
         # Monto
@@ -135,23 +152,37 @@ class AgregarMembresiaDialog(QDialog):
         self.setLayout(layout)
     
     def cargar_clientes(self):
-        """Carga la lista de clientes con autocompletado"""
+        """Carga la lista de clientes con búsqueda en tiempo real"""
         from PySide6.QtWidgets import QCompleter
         from PySide6.QtCore import Qt
-        
+
         clientes = cliente_service.listar_clientes()
         self.combo_cliente.clear()
-        
+        self.combo_cliente.addItem("", None)  # opción vacía inicial
+
         nombres = []
         for cliente in clientes:
             self.combo_cliente.addItem(cliente['nombre'], cliente['id'])
             nombres.append(cliente['nombre'])
-        
-        # Configurar autocompletado
+
+        # Autocompletar con búsqueda por contenido
         completer = QCompleter(nombres)
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
         self.combo_cliente.setCompleter(completer)
+
+        # Sincronizar selección al elegir desde el completador
+        def _on_activated(text):
+            idx = self.combo_cliente.findText(text)
+            if idx >= 0:
+                self.combo_cliente.setCurrentIndex(idx)
+
+        completer.activated.connect(_on_activated)
+
+        # Dejar el campo vacío al abrir
+        self.combo_cliente.setCurrentIndex(0)
+        self.combo_cliente.lineEdit().clear()
     
     def cargar_datos_membresia(self):
         """Carga los datos de la membresía a editar"""
@@ -173,33 +204,26 @@ class AgregarMembresiaDialog(QDialog):
     
     def aceptar(self):
         """Valida y acepta el diálogo"""
-        if self.combo_cliente.currentData() is None:
+        MSG_STYLE = """
+            QMessageBox { background-color: #ffffff; }
+            QLabel { color: #2c2c2c; font-size: 13px; min-width: 300px; }
+            QPushButton {
+                background-color: #2c3e50; color: white;
+                padding: 8px 20px; border: none; border-radius: 4px;
+                font-weight: bold; font-size: 13px; min-width: 80px;
+            }
+            QPushButton:hover { background-color: #3d5166; }
+        """
+
+        # Validar que se haya seleccionado un cliente del dropdown (no sólo escrito)
+        texto_campo = self.combo_cliente.lineEdit().text().strip()
+        idx = self.combo_cliente.findText(texto_campo, Qt.MatchExactly)
+        cliente_id = self.combo_cliente.itemData(idx) if idx >= 0 else None
+        if not cliente_id:
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
-            msg.setText("Seleccione un cliente")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: white;
-                }
-                QLabel {
-                    color: black;
-                    font-size: 13px;
-                    min-width: 300px;
-                }
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 8px 20px;
-                    border: none;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
+            msg.setText("Seleccione un cliente de la lista")
+            msg.setStyleSheet(MSG_STYLE)
             msg.exec()
             return
         
@@ -207,64 +231,20 @@ class AgregarMembresiaDialog(QDialog):
         if not monto_texto:
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
-            msg.setText("Ingrese un monto")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: white;
-                }
-                QLabel {
-                    color: black;
-                    font-size: 13px;
-                    min-width: 300px;
-                }
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 8px 20px;
-                    border: none;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
+            msg.setText("Ingrese un monto mayor a 0")
+            msg.setStyleSheet(MSG_STYLE)
             msg.exec()
             return
         
         try:
             monto_valor = float(monto_texto)
-            if monto_valor < 0:
-                raise ValueError("Monto negativo")
+            if monto_valor <= 0:
+                raise ValueError("Monto debe ser mayor a 0")
         except ValueError:
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
-            msg.setText("Ingrese un monto válido")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: white;
-                }
-                QLabel {
-                    color: black;
-                    font-size: 13px;
-                    min-width: 300px;
-                }
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 8px 20px;
-                    border: none;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
+            msg.setText("El monto debe ser mayor a 0")
+            msg.setStyleSheet(MSG_STYLE)
             msg.exec()
             return
         
@@ -274,8 +254,11 @@ class AgregarMembresiaDialog(QDialog):
         """Retorna los datos ingresados"""
         fecha = self.fecha_inicio.date()
         monto_texto = self.monto.text().strip()
+        texto_campo = self.combo_cliente.lineEdit().text().strip()
+        idx = self.combo_cliente.findText(texto_campo, Qt.MatchExactly)
+        cliente_id = self.combo_cliente.itemData(idx) if idx >= 0 else None
         return {
-            'cliente_id': self.combo_cliente.currentData(),
+            'cliente_id': cliente_id,
             'fecha_inicio': date(fecha.year(), fecha.month(), fecha.day()),
             'monto': float(monto_texto) if monto_texto else 0.0
         }
@@ -301,7 +284,7 @@ class MembresiasView(QWidget):
         
         titulo = QLabel("Membresías")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #000000;")
+        titulo.setStyleSheet("color: #1a1a1a;")
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
@@ -309,7 +292,7 @@ class MembresiasView(QWidget):
         btn_agregar = QPushButton("Agregar Membresía")
         btn_agregar.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
+                background-color: #2c6fad;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -318,7 +301,7 @@ class MembresiasView(QWidget):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #229954;
+                background-color: #255d91;
                 color: white;
             }
         """)
@@ -330,7 +313,7 @@ class MembresiasView(QWidget):
         # Filtros
         filtros_layout = QHBoxLayout()
         label_filtro = QLabel("Filtro:")
-        label_filtro.setStyleSheet("color: #000000;")
+        label_filtro.setStyleSheet("color: #555555;")
         filtros_layout.addWidget(label_filtro)
         
         self.btn_todos = QPushButton("Todos")
@@ -341,22 +324,22 @@ class MembresiasView(QWidget):
         # Estilos para los botones de filtro
         estilo_botones = """
             QPushButton {
-                color: #000000;
-                background-color: #f0f0f0;
+                color: #555555;
+                background-color: #eeeeee;
                 border: 1px solid #d0d0d0;
                 padding: 5px 15px;
                 border-radius: 3px;
             }
             QPushButton:checked {
-                background-color: #3498db;
-                color: black;
-                border: 1px solid #2980b9;
+                background-color: #d8d8d8;
+                color: #555555;
+                border: 1px solid #c0c0c0;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
+                background-color: #d8d8d8;
             }
             QPushButton:checked:hover {
-                background-color: #2980b9;
+                background-color: #333333;
             }
         """
         
@@ -376,79 +359,83 @@ class MembresiasView(QWidget):
         filtros_fecha_layout = QHBoxLayout()
         
         label_fecha = QLabel("📅 Rango de fechas:")
-        label_fecha.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 13px;")
+        label_fecha.setStyleSheet("color: #555555; font-weight: bold; font-size: 13px;")
         filtros_fecha_layout.addWidget(label_fecha)
         
         estilo_date_m = """
             QDateEdit {
                 padding: 6px 10px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
+                background-color: #f5f5f5;
                 font-size: 12px;
-                color: #2c3e50;
+                color: #2c2c2c;
                 min-width: 120px;
             }
-            QDateEdit:focus { border: 2px solid #3498db; }
+            QDateEdit:focus { border: 2px solid #c0c0c0; }
             QDateEdit::drop-down { border: none; }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
         """
         
         label_desde_m = QLabel("Desde:")
-        label_desde_m.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        label_desde_m.setStyleSheet("color: #666666; font-size: 12px;")
         filtros_fecha_layout.addWidget(label_desde_m)
         
         self.date_desde = QDateEdit()
         self.date_desde.setCalendarPopup(True)
         self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_desde.setDisplayFormat("dd/MM/yyyy")
         self.date_desde.setStyleSheet(estilo_date_m)
         filtros_fecha_layout.addWidget(self.date_desde)
         
         label_hasta_m = QLabel("Hasta:")
-        label_hasta_m.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        label_hasta_m.setStyleSheet("color: #666666; font-size: 12px;")
         filtros_fecha_layout.addWidget(label_hasta_m)
         
         self.date_hasta = QDateEdit()
         self.date_hasta.setCalendarPopup(True)
         self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setDisplayFormat("dd/MM/yyyy")
         self.date_hasta.setStyleSheet(estilo_date_m)
         filtros_fecha_layout.addWidget(self.date_hasta)
         
@@ -490,22 +477,7 @@ class MembresiasView(QWidget):
         self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
-        self.tabla.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #d3d3d3;
-                font-size: 13px;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 8px;
-                font-weight: bold;
-                border: none;
-            }
-        """)
+        aplicar_estilo_tabla_moderna(self.tabla)
         
         layout.addWidget(self.tabla)
         
@@ -562,26 +534,27 @@ class MembresiasView(QWidget):
         self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(membresias))
-        
+
         for i, membresia in enumerate(membresias):
+            self.tabla.setRowHeight(i, 52)
             # Cliente - color negro
             cliente_item = QTableWidgetItem(membresia['cliente_nombre'])
-            cliente_item.setForeground(QColor("#000000"))
+            cliente_item.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 0, cliente_item)
             
             # Teléfono - color negro
             telefono_item = QTableWidgetItem(membresia.get('cliente_telefono', ''))
-            telefono_item.setForeground(QColor("#000000"))
+            telefono_item.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 1, telefono_item)
             
             # Inicio - color negro
             inicio_item = QTableWidgetItem(membresia['fecha_inicio'])
-            inicio_item.setForeground(QColor("#000000"))
+            inicio_item.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 2, inicio_item)
             
             # Vencimiento - color negro
             vencimiento_item = QTableWidgetItem(membresia['fecha_vencimiento'])
-            vencimiento_item.setForeground(QColor("#000000"))
+            vencimiento_item.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 3, vencimiento_item)
             
             # Monto - color verde
@@ -589,82 +562,49 @@ class MembresiasView(QWidget):
             monto_item.setForeground(QColor("#27ae60"))
             self.tabla.setItem(i, 4, monto_item)
             
-            estado_item = QTableWidgetItem(membresia['estado'])
-            
-            # Colorear según estado
+            # Colorear estado con widget propio (el QSS de la tabla override setForeground)
             if membresia['estado'] == ESTADO_ACTIVA:
-                estado_item.setForeground(QColor("#27ae60"))
+                estado_color = "#27ae60"
             elif membresia['estado'] == ESTADO_POR_VENCER:
-                estado_item.setForeground(QColor("#f39c12"))
+                estado_color = "#e67e22"
             elif membresia['estado'] == ESTADO_VENCIDA:
-                estado_item.setForeground(QColor("#e74c3c"))
-            
-            self.tabla.setItem(i, 5, estado_item)
+                estado_color = "#e74c3c"
+            else:
+                estado_color = "#1a1a1a"
+
+            estado_widget = QWidget()
+            estado_widget.setStyleSheet("background: transparent; border: none;")
+            estado_layout = QHBoxLayout(estado_widget)
+            estado_layout.setContentsMargins(12, 0, 8, 0)
+            estado_label = QLabel(membresia['estado'])
+            estado_label.setStyleSheet(
+                f"color: {estado_color}; font-size: 13px; background: transparent; border: none;"
+            )
+            estado_layout.addWidget(estado_label)
+            estado_layout.addStretch()
+            self.tabla.setCellWidget(i, 5, estado_widget)
             
             # Botón Ver Factura
-            btn_ver_factura = QPushButton("Ver Factura")
-            btn_ver_factura.setStyleSheet("""
-                QPushButton {
-                    background-color: #9b59b6;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #8e44ad;
-                    color: white;
-                }
-            """)
+            btn_ver_factura = crear_boton_icono("see.svg", "#9b59b6", "#8e44ad", "Ver Factura")
             btn_ver_factura.clicked.connect(lambda checked, m=membresia: self.ver_factura_membresia(m))
-            self.tabla.setCellWidget(i, 6, btn_ver_factura)
-            
+            self.tabla.setCellWidget(i, 6, crear_widget_centrado(btn_ver_factura))
+
             # Botones de acciones
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                    color: white;
-                }
-            """)
+            acciones_layout.setContentsMargins(4, 4, 4, 4)
+            acciones_layout.setSpacing(6)
+            acciones_layout.setAlignment(Qt.AlignCenter)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, m=membresia: self.editar_membresia(m))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                    color: white;
-                }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, mid=membresia['id']: self.eliminar_membresia(mid))
             acciones_layout.addWidget(btn_eliminar)
-            
+
             self.tabla.setCellWidget(i, 7, acciones_widget)
 
         self.tabla.setSortingEnabled(sorting_enabled)
@@ -685,10 +625,10 @@ class MembresiasView(QWidget):
                     msg.setInformativeText(f"Estado: {membresia_activa['estado']}\nVencimiento: {membresia_activa['fecha_vencimiento']}")
                     msg.setStyleSheet("""
                         QMessageBox {
-                            background-color: white;
+                            background-color: #f5f5f5;
                         }
                         QLabel {
-                            color: black;
+                            color: #2c2c2c;
                             font-size: 13px;
                             min-width: 300px;
                         }
@@ -713,13 +653,15 @@ class MembresiasView(QWidget):
                 from services import pago_service
                 
                 # Crear el pago primero
-                pago_id = pago_service.crear_pago(
+                ok_pago, pago_id = pago_service.crear_pago(
                     cliente_id=datos['cliente_id'],
                     monto=datos['monto'],
                     metodo="Efectivo",  # Método por defecto
                     fecha_pago=datos['fecha_inicio'],
                     concepto="Pago de membresía"
                 )
+                if not ok_pago:
+                    raise Exception(f"Error al registrar el pago: {pago_id}")
                 
                 # Crear membresía con el pago_id
                 membresia_id = membresia_service.crear_membresia(
@@ -747,15 +689,15 @@ class MembresiasView(QWidget):
                 respuesta_msg.setDefaultButton(QMessageBox.Yes)
                 respuesta_msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #ffffff;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
                     QPushButton {
-                        background-color: #3498db;
+                        background-color: #2c3e50;
                         color: white;
                         padding: 8px 20px;
                         border: none;
@@ -765,7 +707,7 @@ class MembresiasView(QWidget):
                         min-width: 80px;
                     }
                     QPushButton:hover {
-                        background-color: #2980b9;
+                        background-color: #3d5166;
                     }
                 """)
                 respuesta = respuesta_msg.exec()
@@ -779,10 +721,10 @@ class MembresiasView(QWidget):
                 msg.setText(f"Error al crear membresía: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -823,10 +765,10 @@ class MembresiasView(QWidget):
                 msg.setText("Membresía actualizada exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -852,10 +794,10 @@ class MembresiasView(QWidget):
                 msg.setText(f"Error al actualizar membresía: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -897,10 +839,10 @@ class MembresiasView(QWidget):
             msg.setText(f"No se pudo abrir la factura: {str(e)}")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -929,15 +871,15 @@ class MembresiasView(QWidget):
         msg.setDefaultButton(QMessageBox.No)
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: white;
+                background-color: #ffffff;
             }
             QLabel {
-                color: black;
+                color: #2c2c2c;
                 font-size: 13px;
                 min-width: 300px;
             }
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c3e50;
                 color: white;
                 padding: 8px 20px;
                 border: none;
@@ -947,7 +889,7 @@ class MembresiasView(QWidget):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #3d5166;
             }
         """)
         respuesta = msg.exec()
@@ -962,10 +904,10 @@ class MembresiasView(QWidget):
                 msg.setText("Membresía eliminada correctamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -990,10 +932,10 @@ class MembresiasView(QWidget):
                 msg.setText(f"Error al eliminar membresía: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }

@@ -9,6 +9,8 @@ from datetime import date
 from services import pago_service, cliente_service, membresia_service
 from services import inventario_service
 from utils.factura_generator import generar_factura_pago, abrir_factura
+from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
+from utils.table_styles import aplicar_estilo_tabla_moderna
 from utils.validators import crear_validador_numerico_decimal, crear_validador_entero
 from pathlib import Path
 
@@ -32,86 +34,100 @@ class RegistrarPagoDialog(QDialog):
         # Estilos para el diálogo
         self.setStyleSheet("""
             QDialog {
-                background-color: white;
+                background-color: #f5f5f5;
             }
             QLabel {
-                color: #2c3e50;
+                color: #2c2c2c;
                 font-size: 13px;
             }
             QLineEdit, QComboBox, QDateEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
-                color: #2c3e50;
+                background-color: #f5f5f5;
+                color: #1a1a1a;
                 font-size: 13px;
             }
             QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
-                border: 2px solid #3498db;
+                border: 2px solid #c0c0c0;
             }
             QComboBox QAbstractItemView {
-                color: black;
-                background-color: white;
-                selection-background-color: #3498db;
-                selection-color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
+                selection-background-color: #808080;
+                selection-color: white;
             }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_prevmonth,
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_nextmonth {
                 qproperty-icon: none;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QAbstractItemView:enabled[isHeaderRow="true"] {
-                color: white;
+                color: #555555;
                 font-weight: bold;
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
             QPushButton {
-                color: black;
+                background-color: #2c3e50;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #3d5166;
             }
         """)
         
-        # Selector de cliente con autocompletado
+        # Selector de cliente con búsqueda en tiempo real
         self.combo_cliente = QComboBox()
-        self.combo_cliente.setEditable(False)
-        self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)  # No insertar nuevos items
+        self.combo_cliente.setEditable(True)
+        self.combo_cliente.setInsertPolicy(QComboBox.NoInsert)
+        self.combo_cliente.lineEdit().setPlaceholderText("Escribe para buscar...")
+        self.combo_cliente.lineEdit().setClearButtonEnabled(True)
         self.cargar_clientes()
         layout.addRow("Cliente:", self.combo_cliente)
         
@@ -119,6 +135,7 @@ class RegistrarPagoDialog(QDialog):
         self.fecha = QDateEdit()
         self.fecha.setDate(QDate.currentDate())
         self.fecha.setCalendarPopup(True)
+        self.fecha.setDisplayFormat("dd/MM/yyyy")
         layout.addRow("Fecha:", self.fecha)
         
         # Monto
@@ -165,20 +182,34 @@ class RegistrarPagoDialog(QDialog):
         self.setLayout(layout)
     
     def cargar_clientes(self):
-        """Carga la lista de clientes con autocompletado"""
+        """Carga la lista de clientes con búsqueda en tiempo real"""
         clientes = cliente_service.listar_clientes()
         self.combo_cliente.clear()
-        
+        self.combo_cliente.addItem("", None)  # opción vacía inicial
+
         nombres = []
         for cliente in clientes:
             self.combo_cliente.addItem(cliente['nombre'], cliente['id'])
             nombres.append(cliente['nombre'])
-        
-        # Configurar autocompletado
+
+        # Autocompletar con búsqueda por contenido
         completer = QCompleter(nombres)
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
         self.combo_cliente.setCompleter(completer)
+
+        # Sincronizar selección al elegir desde el completador
+        def _on_activated(text):
+            idx = self.combo_cliente.findText(text)
+            if idx >= 0:
+                self.combo_cliente.setCurrentIndex(idx)
+
+        completer.activated.connect(_on_activated)
+
+        # Dejar el campo vacío al abrir
+        self.combo_cliente.setCurrentIndex(0)
+        self.combo_cliente.lineEdit().clear()
 
     def cargar_productos(self):
         """Carga productos en el combo"""
@@ -229,15 +260,15 @@ class RegistrarPagoDialog(QDialog):
             msg.setText("Seleccione un cliente")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #ffffff;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
                 QPushButton {
-                    background-color: #3498db;
+                    background-color: #2c3e50;
                     color: white;
                     padding: 8px 20px;
                     border: none;
@@ -247,7 +278,7 @@ class RegistrarPagoDialog(QDialog):
                     min-width: 80px;
                 }
                 QPushButton:hover {
-                    background-color: #2980b9;
+                    background-color: #3d5166;
                 }
             """)
             msg.exec()
@@ -266,15 +297,15 @@ class RegistrarPagoDialog(QDialog):
             msg.setText("Ingrese un monto válido mayor a 0 (puede usar decimales, ej: 0.50)")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #ffffff;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
                 QPushButton {
-                    background-color: #3498db;
+                    background-color: #2c3e50;
                     color: white;
                     padding: 8px 20px;
                     border: none;
@@ -284,7 +315,7 @@ class RegistrarPagoDialog(QDialog):
                     min-width: 80px;
                 }
                 QPushButton:hover {
-                    background-color: #2980b9;
+                    background-color: #3d5166;
                 }
             """)
             msg.exec()
@@ -340,7 +371,7 @@ class PagosView(QWidget):
         
         titulo = QLabel("Pagos")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #000000;")
+        titulo.setStyleSheet("color: #1a1a1a;")
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
@@ -348,7 +379,7 @@ class PagosView(QWidget):
         btn_registrar = QPushButton("Registrar Pago")
         btn_registrar.setStyleSheet("""
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c6fad;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -357,7 +388,7 @@ class PagosView(QWidget):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #255d91;
                 color: white;
             }
         """)
@@ -369,27 +400,28 @@ class PagosView(QWidget):
         # Filtros rápidos
         filtros_layout = QHBoxLayout()
         label_filtro = QLabel("Ver:")
-        label_filtro.setStyleSheet("color: #000000;")
+        label_filtro.setStyleSheet("color: #555555;")
         filtros_layout.addWidget(label_filtro)
         
         # Estilos para botones de filtro
         estilo_botones = """
             QPushButton {
-                background-color: #f0f0f0;
-                color: #000000;
+                background-color: #eeeeee;
+                color: #555555;
                 padding: 8px 16px;
                 border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border: 2px solid #b0b0b0;
+                background-color: #d8d8d8;
+                border: 2px solid #555555;
+                color: #1a1a1a;
             }
             QPushButton:checked {
-                background-color: #2196F3;
-                color: black;
-                border: 2px solid #1976D2;
+                background-color: #d8d8d8;
+                color: #555555;
+                border: 2px solid #c0c0c0;
             }
         """
         
@@ -421,79 +453,83 @@ class PagosView(QWidget):
         filtros_fecha_layout = QHBoxLayout()
         
         label_fecha = QLabel("📅 Rango de fechas:")
-        label_fecha.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 13px;")
+        label_fecha.setStyleSheet("color: #555555; font-weight: bold; font-size: 13px;")
         filtros_fecha_layout.addWidget(label_fecha)
         
         estilo_date_pagos = """
             QDateEdit {
                 padding: 6px 10px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
+                background-color: #f5f5f5;
                 font-size: 12px;
-                color: #2c3e50;
+                color: #2c2c2c;
                 min-width: 120px;
             }
-            QDateEdit:focus { border: 2px solid #3498db; }
+            QDateEdit:focus { border: 2px solid #c0c0c0; }
             QDateEdit::drop-down { border: none; }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
         """
         
         label_desde_p = QLabel("Desde:")
-        label_desde_p.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        label_desde_p.setStyleSheet("color: #666666; font-size: 12px;")
         filtros_fecha_layout.addWidget(label_desde_p)
         
         self.date_desde = QDateEdit()
         self.date_desde.setCalendarPopup(True)
         self.date_desde.setDate(QDate(date.today().year, date.today().month, 1))
+        self.date_desde.setDisplayFormat("dd/MM/yyyy")
         self.date_desde.setStyleSheet(estilo_date_pagos)
         filtros_fecha_layout.addWidget(self.date_desde)
         
         label_hasta_p = QLabel("Hasta:")
-        label_hasta_p.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        label_hasta_p.setStyleSheet("color: #666666; font-size: 12px;")
         filtros_fecha_layout.addWidget(label_hasta_p)
         
         self.date_hasta = QDateEdit()
         self.date_hasta.setCalendarPopup(True)
         self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setDisplayFormat("dd/MM/yyyy")
         self.date_hasta.setStyleSheet(estilo_date_pagos)
         filtros_fecha_layout.addWidget(self.date_hasta)
         
@@ -535,22 +571,7 @@ class PagosView(QWidget):
         self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
-        self.tabla.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #d3d3d3;
-                font-size: 13px;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 8px;
-                font-weight: bold;
-                border: none;
-            }
-        """)
+        aplicar_estilo_tabla_moderna(self.tabla)
         
         layout.addWidget(self.tabla)
         
@@ -566,95 +587,59 @@ class PagosView(QWidget):
         self.tabla.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
+            self.tabla.setRowHeight(i, 52)
             # Cliente - negro
             item_cliente = QTableWidgetItem(pago['cliente_nombre'])
-            item_cliente.setForeground(Qt.black)
+            item_cliente.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 0, item_cliente)
             
             # Fecha - negro
             item_fecha = QTableWidgetItem(pago['fecha'])
-            item_fecha.setForeground(Qt.black)
+            item_fecha.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 1, item_fecha)
             
-            # Monto - verde
-            item_monto = QTableWidgetItem(f"${pago['monto']:,.2f}")
-            item_monto.setForeground(QColor("#27ae60"))
-            self.tabla.setItem(i, 2, item_monto)
-            
+            # Monto - verde con widget (setForeground es pisado por el QSS de la tabla)
+            monto_widget = QWidget()
+            monto_widget.setStyleSheet("background: transparent; border: none;")
+            monto_layout = QHBoxLayout(monto_widget)
+            monto_layout.setContentsMargins(12, 0, 8, 0)
+            monto_label = QLabel(f"${pago['monto']:,.2f}")
+            monto_label.setStyleSheet("color: #27ae60; font-size: 13px; background: transparent; border: none;")
+            monto_layout.addWidget(monto_label)
+            monto_layout.addStretch()
+            self.tabla.setCellWidget(i, 2, monto_widget)
+
             # Método - negro
             item_metodo = QTableWidgetItem(pago['metodo'])
-            item_metodo.setForeground(Qt.black)
+            item_metodo.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 3, item_metodo)
             
             # Concepto - negro
             item_concepto = QTableWidgetItem(pago.get('concepto', ''))
-            item_concepto.setForeground(Qt.black)
+            item_concepto.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 4, item_concepto)
             
             # Botón Ver Factura
-            btn_ver_factura = QPushButton("Ver Factura")
-            btn_ver_factura.setStyleSheet("""
-                QPushButton {
-                    background-color: #9b59b6;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #8e44ad;
-                    color: white;
-                }
-            """)
+            btn_ver_factura = crear_boton_icono("see.svg", "#9b59b6", "#8e44ad", "Ver Factura")
             btn_ver_factura.clicked.connect(lambda checked, p=pago: self.ver_factura_pago(p))
-            self.tabla.setCellWidget(i, 5, btn_ver_factura)
-            
+            self.tabla.setCellWidget(i, 5, crear_widget_centrado(btn_ver_factura))
+
             # Botones de acciones
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                    color: white;
-                }
-            """)
+            acciones_layout.setContentsMargins(4, 4, 4, 4)
+            acciones_layout.setSpacing(6)
+            acciones_layout.setAlignment(Qt.AlignCenter)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, p=pago: self.editar_pago(p))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                    color: white;
-                }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, pid=pago['id']: self.eliminar_pago(pid))
             acciones_layout.addWidget(btn_eliminar)
-            
+
             self.tabla.setCellWidget(i, 6, acciones_widget)
 
         self.tabla.setSortingEnabled(sorting_enabled)
@@ -668,95 +653,59 @@ class PagosView(QWidget):
         self.tabla.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
+            self.tabla.setRowHeight(i, 52)
             # Cliente - negro
             item_cliente = QTableWidgetItem(pago['cliente_nombre'])
-            item_cliente.setForeground(Qt.black)
+            item_cliente.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 0, item_cliente)
             
             # Fecha - negro
             item_fecha = QTableWidgetItem(pago['fecha'])
-            item_fecha.setForeground(Qt.black)
+            item_fecha.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 1, item_fecha)
             
-            # Monto - verde
-            item_monto = QTableWidgetItem(f"${pago['monto']:,.2f}")
-            item_monto.setForeground(QColor("#27ae60"))
-            self.tabla.setItem(i, 2, item_monto)
-            
+            # Monto - verde con widget (setForeground es pisado por el QSS de la tabla)
+            monto_widget = QWidget()
+            monto_widget.setStyleSheet("background: transparent; border: none;")
+            monto_layout = QHBoxLayout(monto_widget)
+            monto_layout.setContentsMargins(12, 0, 8, 0)
+            monto_label = QLabel(f"${pago['monto']:,.2f}")
+            monto_label.setStyleSheet("color: #27ae60; font-size: 13px; background: transparent; border: none;")
+            monto_layout.addWidget(monto_label)
+            monto_layout.addStretch()
+            self.tabla.setCellWidget(i, 2, monto_widget)
+
             # Método - negro
             item_metodo = QTableWidgetItem(pago['metodo'])
-            item_metodo.setForeground(Qt.black)
+            item_metodo.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 3, item_metodo)
             
             # Concepto - negro
             item_concepto = QTableWidgetItem(pago.get('concepto', ''))
-            item_concepto.setForeground(Qt.black)
+            item_concepto.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 4, item_concepto)
             
             # Botón Ver Factura
-            btn_ver_factura = QPushButton("Ver Factura")
-            btn_ver_factura.setStyleSheet("""
-                QPushButton {
-                    background-color: #9b59b6;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #8e44ad;
-                    color: white;
-                }
-            """)
+            btn_ver_factura = crear_boton_icono("see.svg", "#9b59b6", "#8e44ad", "Ver Factura")
             btn_ver_factura.clicked.connect(lambda checked, p=pago: self.ver_factura_pago(p))
-            self.tabla.setCellWidget(i, 5, btn_ver_factura)
-            
+            self.tabla.setCellWidget(i, 5, crear_widget_centrado(btn_ver_factura))
+
             # Botones de acciones
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                    color: white;
-                }
-            """)
+            acciones_layout.setContentsMargins(4, 4, 4, 4)
+            acciones_layout.setSpacing(6)
+            acciones_layout.setAlignment(Qt.AlignCenter)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, p=pago: self.editar_pago(p))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                    color: white;
-                }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, pid=pago['id']: self.eliminar_pago(pid))
             acciones_layout.addWidget(btn_eliminar)
-            
+
             self.tabla.setCellWidget(i, 6, acciones_widget)
 
         self.tabla.setSortingEnabled(sorting_enabled)
@@ -804,67 +753,52 @@ class PagosView(QWidget):
         self.tabla.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
+            self.tabla.setRowHeight(i, 52)
             item_cliente = QTableWidgetItem(pago['cliente_nombre'])
-            item_cliente.setForeground(Qt.black)
+            item_cliente.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 0, item_cliente)
             
             item_fecha = QTableWidgetItem(pago['fecha'])
-            item_fecha.setForeground(Qt.black)
+            item_fecha.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 1, item_fecha)
             
-            item_monto = QTableWidgetItem(f"${pago['monto']:,.2f}")
-            item_monto.setForeground(QColor("#27ae60"))
-            self.tabla.setItem(i, 2, item_monto)
-            
+            monto_widget = QWidget()
+            monto_widget.setStyleSheet("background: transparent; border: none;")
+            monto_layout = QHBoxLayout(monto_widget)
+            monto_layout.setContentsMargins(12, 0, 8, 0)
+            monto_label = QLabel(f"${pago['monto']:,.2f}")
+            monto_label.setStyleSheet("color: #27ae60; font-size: 13px; background: transparent; border: none;")
+            monto_layout.addWidget(monto_label)
+            monto_layout.addStretch()
+            self.tabla.setCellWidget(i, 2, monto_widget)
+
             item_metodo = QTableWidgetItem(pago['metodo'])
-            item_metodo.setForeground(Qt.black)
+            item_metodo.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 3, item_metodo)
             
             item_concepto = QTableWidgetItem(pago.get('concepto', ''))
-            item_concepto.setForeground(Qt.black)
+            item_concepto.setForeground(QColor("#1a1a1a"))
             self.tabla.setItem(i, 4, item_concepto)
             
-            btn_ver_factura = QPushButton("Ver Factura")
-            btn_ver_factura.setStyleSheet("""
-                QPushButton {
-                    background-color: #9b59b6; color: white;
-                    padding: 5px 15px; border: none; border-radius: 3px;
-                    font-weight: bold; font-size: 13px;
-                }
-                QPushButton:hover { background-color: #8e44ad; color: white; }
-            """)
+            btn_ver_factura = crear_boton_icono("see.svg", "#9b59b6", "#8e44ad", "Ver Factura")
             btn_ver_factura.clicked.connect(lambda checked, p=pago: self.ver_factura_pago(p))
-            self.tabla.setCellWidget(i, 5, btn_ver_factura)
-            
+            self.tabla.setCellWidget(i, 5, crear_widget_centrado(btn_ver_factura))
+
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db; color: white;
-                    padding: 5px 15px; border: none; border-radius: 3px;
-                    font-weight: bold; font-size: 13px;
-                }
-                QPushButton:hover { background-color: #2980b9; color: white; }
-            """)
+            acciones_layout.setContentsMargins(4, 4, 4, 4)
+            acciones_layout.setSpacing(6)
+            acciones_layout.setAlignment(Qt.AlignCenter)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, p=pago: self.editar_pago(p))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c; color: white;
-                    padding: 5px 15px; border: none; border-radius: 3px;
-                    font-weight: bold; font-size: 13px;
-                }
-                QPushButton:hover { background-color: #c0392b; color: white; }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, pid=pago['id']: self.eliminar_pago(pid))
             acciones_layout.addWidget(btn_eliminar)
-            
+
             self.tabla.setCellWidget(i, 6, acciones_widget)
 
         self.tabla.setSortingEnabled(sorting_enabled)
@@ -910,10 +844,10 @@ class PagosView(QWidget):
             msg.setInformativeText("¿Desea ver la factura generada?")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -959,10 +893,10 @@ class PagosView(QWidget):
             msg.setText("Pago actualizado correctamente")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -1004,10 +938,10 @@ class PagosView(QWidget):
             msg.setText(f"No se pudo abrir la factura: {str(e)}")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -1036,15 +970,15 @@ class PagosView(QWidget):
         msg.setDefaultButton(QMessageBox.No)
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: white;
+                background-color: #ffffff;
             }
             QLabel {
-                color: black;
+                color: #2c2c2c;
                 font-size: 13px;
                 min-width: 300px;
             }
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c3e50;
                 color: white;
                 padding: 8px 20px;
                 border: none;
@@ -1054,7 +988,7 @@ class PagosView(QWidget):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #3d5166;
             }
         """)
         respuesta = msg.exec()
@@ -1070,10 +1004,10 @@ class PagosView(QWidget):
                 msg.setText("Pago eliminado correctamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -1098,10 +1032,10 @@ class PagosView(QWidget):
                 msg.setText(f"Error al eliminar pago: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }

@@ -13,15 +13,13 @@ try:
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
 except ImportError:
-    print("Error: openpyxl no está instalado. Ejecuta: pip install openpyxl")
-    exit(1)
+    raise ImportError("openpyxl no está instalado. Ejecuta: pip install openpyxl")
 
 try:
     import msal
     import requests
 except ImportError:
-    print("Error: msal no está instalado. Ejecuta: pip install msal requests")
-    exit(1)
+    raise ImportError("msal no está instalado. Ejecuta: pip install msal requests")
 
 from utils.constants import DB_PATH
 
@@ -33,9 +31,11 @@ CONFIG_FILE = Path(__file__).parent / "onedrive_config_personal.json"
 # Configuración por defecto para cuentas personales
 # Usando el client_id de Microsoft Graph Explorer (aplicación pública)
 DEFAULT_CONFIG = {
-    "client_id": "de8bc8b5-d9f9-48b1-a8ad-b748da725064",  # Graph Explorer Client ID
+    "client_id": "1950a258-227b-4e31-a9cf-717495945fc2",  # Azure PowerShell public client (soporta Device Code Flow)
     "authority": "https://login.microsoftonline.com/consumers",
-    "scope": ["https://graph.microsoft.com/Files.ReadWrite"],
+    "scope": [
+        "https://graph.microsoft.com/Files.ReadWrite"
+    ],
     "onedrive_folder": "/",
     "excel_filename": "gimnasio.xlsx"
 }
@@ -85,81 +85,48 @@ class OneDriveSyncPersonal:
                 f.write(self.token_cache.serialize())
     
     def authenticate(self):
-        """Autentica usando flujo interactivo con navegador local"""
+        """Autentica con Device Code Flow (evita errores de redirect_uri)."""
         print("\n🔐 Autenticando con Microsoft (cuenta personal)...")
-        
-        # Crear aplicación pública
+
         app = msal.PublicClientApplication(
             self.config["client_id"],
             authority=self.config["authority"],
             token_cache=self.token_cache
         )
-        
-        # Intentar obtener token del cache primero
+
+        # 1) Intentar token en caché
         accounts = app.get_accounts()
         if accounts:
-            print("📦 Usando token en cache...")
-            result = app.acquire_token_silent(
-                self.config["scope"],
-                account=accounts[0]
-            )
+            result = app.acquire_token_silent(self.config["scope"], account=accounts[0])
             if result and "access_token" in result:
                 self.access_token = result["access_token"]
-                print("✅ Autenticación exitosa (cache)")
-                return True
-        
-        # Si no hay cache, usar flujo interactivo con navegador
-        print("\n🔑 Abriendo navegador para autenticación...")
-        print("💡 Si no se abre automáticamente, copia la URL que aparecerá.\n")
-        
-        try:
-            result = app.acquire_token_interactive(
-                scopes=self.config["scope"],
-                prompt="select_account"
-            )
-            
-            if "access_token" in result:
-                self.access_token = result["access_token"]
                 self._save_token_cache()
-                print("\n✅ Autenticación exitosa")
+                print("✅ Token recuperado desde caché")
                 return True
-            else:
-                error_msg = result.get("error_description", result.get("error"))
-                raise Exception(f"Error de autenticación: {error_msg}")
-        except Exception as e:
-            print(f"\n⚠️  La autenticación interactiva falló: {str(e)}")
-            print("\n🔄 Intentando con flujo de código de dispositivo...")
-            return self._authenticate_device_flow(app)
-    
+
+        # 2) Device code flow (sin redirect_uri)
+        return self._authenticate_device_flow(app)
+
+
     def _authenticate_device_flow(self, app):
-        """Método alternativo: flujo de código de dispositivo"""
-        try:
-            flow = app.initiate_device_flow(scopes=self.config["scope"])
-            
-            if "user_code" not in flow:
-                raise Exception(
-                    f"Error al iniciar flujo de autenticación: {flow.get('error_description')}"
-                )
-            
-            print("\n" + "=" * 60)
-            print("📱 AUTENTICACIÓN REQUERIDA")
-            print("=" * 60)
-            print(flow["message"])
-            print("=" * 60)
-            print("\n⏳ Esperando autenticación...")
-            
-            result = app.acquire_token_by_device_flow(flow)
-            
-            if "access_token" in result:
-                self.access_token = result["access_token"]
-                self._save_token_cache()
-                print("\n✅ Autenticación exitosa")
-                return True
-            else:
-                error_msg = result.get("error_description", result.get("error"))
-                raise Exception(f"Error de autenticación: {error_msg}")
-        except Exception as e:
-            raise Exception(f"Ambos métodos de autenticación fallaron: {str(e)}")
+        """Flujo de código de dispositivo"""
+        flow = app.initiate_device_flow(scopes=self.config["scope"])
+        if "user_code" not in flow:
+            raise Exception(f"No se pudo iniciar device flow: {flow}")
+
+        print("\n📱 Inicia sesión en:")
+        print(flow["verification_uri"])
+        print(f"Código: {flow['user_code']}\n")
+
+        result = app.acquire_token_by_device_flow(flow)
+
+        if "access_token" in result:
+            self.access_token = result["access_token"]
+            self._save_token_cache()
+            print("✅ Autenticación exitosa")
+            return True
+
+        raise Exception(f"Error de autenticación: {result.get('error_description', result)}")
     
     def read_database(self):
         """Lee los datos de la base de datos"""
@@ -332,37 +299,80 @@ class OneDriveSyncPersonal:
             print(f"❌ Error al subir: {error_detail}")
             raise
     
+    def _get_googledrive_local_path(self):
+        """Detecta la carpeta local de Google Drive automáticamente"""
+        candidates = [
+            # Google Drive for Desktop (nuevo cliente)
+            Path.home() / "My Drive",
+            Path("G:\\") / "My Drive",
+            Path("G:\\"),
+            # Google Drive (cliente antiguo)
+            Path.home() / "Google Drive",
+            Path("G:\\Google Drive"),
+        ]
+
+        # Buscar en todas las letras de unidad (G:, H:, etc.)
+        import string
+        for letter in string.ascii_uppercase:
+            drive = Path(f"{letter}:\\")
+            if drive.exists():
+                # Primero buscar subcarpeta (en inglés o español)
+                for sub in ["Mi unidad", "My Drive", "Google Drive"]:
+                    p = drive / sub
+                    if p.exists():
+                        return p
+                # Si la raíz tiene el marcador de Google Drive
+                marker = drive / ".shortcut-targets-by-id"
+                if marker.exists():
+                    # Crear "My Drive" si no existe
+                    my_drive = drive / "My Drive"
+                    my_drive.mkdir(exist_ok=True)
+                    return my_drive
+
+        for p in candidates:
+            if p.exists():
+                return p
+        return None
+
     def sync(self):
-        """Ejecuta la sincronización completa"""
+        """Ejecuta la sincronización completa guardando en carpeta local de Google Drive"""
         print("=" * 60)
-        print("🔄 SINCRONIZACIÓN GIMNASIO.DB → ONEDRIVE (Cuenta Personal)")
+        print("🔄 SINCRONIZACIÓN GIMNASIO.DB → GOOGLE DRIVE (Carpeta Local)")
         print("=" * 60)
-        
+
         try:
-            # Autenticar
-            self.authenticate()
-            
+            # Detectar carpeta Google Drive local
+            gdrive_path = self._get_googledrive_local_path()
+            if not gdrive_path:
+                raise FileNotFoundError(
+                    "No se encontró la carpeta local de Google Drive.\n"
+                    "   1. Descarga e instala 'Google Drive for Desktop':\n"
+                    "      https://www.google.com/drive/download/\n"
+                    "   2. Inicia sesión con kyogymdata@gmail.com\n"
+                    "   3. Vuelve a ejecutar este script."
+                )
+
+            filename = self.config.get("excel_filename", "gimnasio.xlsx")
+            output_file = gdrive_path / filename
+
+            print(f"\n📁 Carpeta Google Drive detectada: {gdrive_path}")
+
             # Leer datos
             data = self.read_database()
-            
-            # Crear Excel
-            temp_excel = Path(__file__).parent / "temp_gimnasio.xlsx"
-            self.create_excel(data, temp_excel)
-            
-            # Subir a OneDrive
-            self.upload_to_onedrive(temp_excel)
-            
-            # Limpiar
-            if temp_excel.exists():
-                temp_excel.unlink()
-            
+
+            # Crear Excel directamente en la carpeta de Google Drive
+            self.create_excel(data, output_file)
+
+            print(f"\n☁️  Archivo guardado en: {output_file}")
+            print("   Google Drive sincronizará automáticamente con la cuenta kyogymdata@gmail.com")
+
             print("\n" + "=" * 60)
             print("✅ SINCRONIZACIÓN COMPLETADA")
             print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             print("=" * 60)
-            
+
             return True
-            
+
         except Exception as e:
             print(f"\n❌ Error: {str(e)}")
             return False

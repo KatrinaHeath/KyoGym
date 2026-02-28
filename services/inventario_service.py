@@ -3,15 +3,15 @@ from datetime import date
 from db import get_connection
 
 
-def crear_producto(nombre, categoria, cantidad=0, precio=0.0):
+def crear_producto(nombre, categoria, cantidad=0, precio=0.0, stock_minimo=0):
     """Crea un nuevo producto en el inventario"""
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
-        INSERT INTO inventario (nombre, categoria, cantidad, precio, fecha_registro)
-        VALUES (?, ?, ?, ?, ?)
-    """, (nombre, categoria, cantidad, precio, date.today().isoformat()))
+        INSERT INTO inventario (nombre, categoria, cantidad, precio, fecha_registro, stock_minimo)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (nombre, categoria, cantidad, precio, date.today().isoformat(), stock_minimo))
     
     producto_id = cursor.lastrowid
     conn.commit()
@@ -58,16 +58,16 @@ def listar_productos(buscar="", categoria=None):
     return [dict(producto) for producto in productos]
 
 
-def actualizar_producto(producto_id, nombre, categoria, cantidad, precio):
+def actualizar_producto(producto_id, nombre, categoria, cantidad, precio, stock_minimo=0):
     """Actualiza un producto existente"""
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
         UPDATE inventario
-        SET nombre = ?, categoria = ?, cantidad = ?, precio = ?
+        SET nombre = ?, categoria = ?, cantidad = ?, precio = ?, stock_minimo = ?
         WHERE id = ?
-    """, (nombre, categoria, cantidad, precio, producto_id))
+    """, (nombre, categoria, cantidad, precio, stock_minimo, producto_id))
     
     conn.commit()
     conn.close()

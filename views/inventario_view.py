@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor
 from services import inventario_service
+from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
+from utils.table_styles import aplicar_estilo_tabla_moderna
 from utils.validators import crear_validador_nombre, crear_validador_entero, crear_validador_numerico_decimal
 
 
@@ -27,32 +29,42 @@ class AgregarProductoDialog(QDialog):
         # Estilos para el diálogo
         self.setStyleSheet("""
             QDialog {
-                background-color: white;
+                background-color: #f5f5f5;
             }
             QLabel {
-                color: #2c3e50;
+                color: #2c2c2c;
                 font-size: 13px;
             }
             QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
-                color: #000000;
+                background-color: #f5f5f5;
+                color: #1a1a1a;
                 font-size: 13px;
             }
             QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
-                border: 2px solid #3498db;
+                border: 2px solid #c0c0c0;
             }
             /* Forzar color en el popup de los QComboBox */
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #000000;
-                selection-background-color: #3498db;
+                background-color: #f5f5f5;
+                color: #2c2c2c;
+                selection-background-color: #808080;
                 selection-color: white;
             }
             QPushButton {
-                color: black;
+                background-color: #2c3e50;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #3d5166;
             }
         """)
         
@@ -88,6 +100,13 @@ class AgregarProductoDialog(QDialog):
         self.precio.setPrefix("$")
         self.precio.setValue(0.0)
         layout.addRow("Precio:", self.precio)
+
+        # Stock mínimo
+        self.stock_minimo = QSpinBox()
+        self.stock_minimo.setMinimum(0)
+        self.stock_minimo.setMaximum(999999)
+        self.stock_minimo.setValue(0)
+        layout.addRow("Stock Mínimo:", self.stock_minimo)
         
         # Botones
         botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -103,69 +122,45 @@ class AgregarProductoDialog(QDialog):
         self.categoria.setCurrentText(self.producto['categoria'])
         self.cantidad.setValue(self.producto['cantidad'])
         self.precio.setValue(self.producto['precio'])
+        self.stock_minimo.setValue(self.producto.get('stock_minimo') or 0)
     
     def aceptar(self):
         """Valida y acepta el diálogo"""
+        MSG_STYLE = """
+            QMessageBox { background-color: #ffffff; }
+            QLabel { color: #2c2c2c; font-size: 13px; min-width: 300px; }
+            QPushButton {
+                background-color: #2c3e50; color: white;
+                padding: 8px 20px; border: none; border-radius: 4px;
+                font-weight: bold; font-size: 13px; min-width: 80px;
+            }
+            QPushButton:hover { background-color: #3d5166; }
+        """
+
         if not self.nombre.text().strip():
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
             msg.setText("El nombre es requerido")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: white;
-                }
-                QLabel {
-                    color: black;
-                    font-size: 13px;
-                    min-width: 300px;
-                }
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 8px 20px;
-                    border: none;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
+            msg.setStyleSheet(MSG_STYLE)
             msg.exec()
             return
-        
+
         if not self.categoria.currentText().strip():
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
             msg.setText("La categoría es requerida")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: white;
-                }
-                QLabel {
-                    color: black;
-                    font-size: 13px;
-                    min-width: 300px;
-                }
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 8px 20px;
-                    border: none;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
+            msg.setStyleSheet(MSG_STYLE)
             msg.exec()
             return
-        
+
+        if self.precio.value() <= 0:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText("El precio debe ser mayor a 0")
+            msg.setStyleSheet(MSG_STYLE)
+            msg.exec()
+            return
+
         self.accept()
     
     def obtener_datos(self):
@@ -174,7 +169,8 @@ class AgregarProductoDialog(QDialog):
             'nombre': self.nombre.text().strip(),
             'categoria': self.categoria.currentText().strip(),
             'cantidad': self.cantidad.value(),
-            'precio': self.precio.value()
+            'precio': self.precio.value(),
+            'stock_minimo': self.stock_minimo.value()
         }
 
 
@@ -196,7 +192,7 @@ class InventarioView(QWidget):
         
         titulo = QLabel("Inventario")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #000000;")
+        titulo.setStyleSheet("color: #1a1a1a;")
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
@@ -208,10 +204,14 @@ class InventarioView(QWidget):
         self.buscar_input.setStyleSheet("""
             QLineEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
-                color: black;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
+            }
+            QLineEdit:focus {
+                border: 2px solid #c0c0c0;
             }
         """)
         self.buscar_input.textChanged.connect(self.cargar_datos)
@@ -220,7 +220,7 @@ class InventarioView(QWidget):
         btn_agregar = QPushButton("Agregar Producto")
         btn_agregar.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
+                background-color: #2c6fad;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -229,7 +229,7 @@ class InventarioView(QWidget):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #229954;
+                background-color: #255d91;
                 color: white;
             }
         """)
@@ -242,26 +242,27 @@ class InventarioView(QWidget):
         filtros_layout = QHBoxLayout()
         
         label_categoria = QLabel("Categoría:")
-        label_categoria.setStyleSheet("color: #000000; font-weight: bold;")
+        label_categoria.setStyleSheet("color: #555555; font-weight: bold;")
         filtros_layout.addWidget(label_categoria)
         
         estilo_botones = """
             QPushButton {
-                background-color: #f0f0f0;
-                color: #000000;
+                background-color: #eeeeee;
+                color: #555555;
                 padding: 8px 16px;
                 border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border: 2px solid #b0b0b0;
+                background-color: #d8d8d8;
+                border: 2px solid #555555;
+                color: #1a1a1a;
             }
             QPushButton:checked {
-                background-color: #2196F3;
-                color: white;
-                border: 2px solid #1976D2;
+                background-color: #d8d8d8;
+                color: #555555;
+                border: 2px solid #c0c0c0;
             }
         """
         
@@ -300,30 +301,8 @@ class InventarioView(QWidget):
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.verticalHeader().setVisible(False)
-        
-        self.tabla.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #d3d3d3;
-                font-size: 13px;
-                background-color: white;
-                border: 1px solid #e0e0e0;
-            }
-            QTableWidget::item {
-                padding: 5px;
-                color: #2c3e50;
-            }
-            QTableWidget::item:selected {
-                background-color: #3498db;
-                color: white;
-            }
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 8px;
-                font-weight: bold;
-                border: none;
-            }
-        """)
+
+        aplicar_estilo_tabla_moderna(self.tabla)
         
         layout.addWidget(self.tabla)
         
@@ -338,8 +317,9 @@ class InventarioView(QWidget):
         self.tabla.setSortingEnabled(False)
         
         self.tabla.setRowCount(len(productos))
-        
+
         for i, producto in enumerate(productos):
+            self.tabla.setRowHeight(i, 52)
             # Nombre
             self.tabla.setItem(i, 0, QTableWidgetItem(producto['nombre']))
             
@@ -363,45 +343,17 @@ class InventarioView(QWidget):
 
             # Botones de acciones
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                    color: white;
-                }
-            """)
+            acciones_layout.setContentsMargins(4, 4, 4, 4)
+            acciones_layout.setSpacing(6)
+            acciones_layout.setAlignment(Qt.AlignCenter)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, p=producto: self.editar_producto(p))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                    color: white;
-                }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, pid=producto['id']: self.eliminar_producto(pid))
             acciones_layout.addWidget(btn_eliminar)
             
@@ -433,7 +385,8 @@ class InventarioView(QWidget):
                     nombre=datos['nombre'],
                     categoria=datos['categoria'],
                     cantidad=datos['cantidad'],
-                    precio=datos['precio']
+                    precio=datos['precio'],
+                    stock_minimo=datos.get('stock_minimo', 0)
                 )
                 
                 msg = QMessageBox(self)
@@ -441,10 +394,10 @@ class InventarioView(QWidget):
                 msg.setText("Producto agregado exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -470,10 +423,10 @@ class InventarioView(QWidget):
                 msg.setText(f"Error al agregar producto: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -504,7 +457,8 @@ class InventarioView(QWidget):
                     nombre=datos['nombre'],
                     categoria=datos['categoria'],
                     cantidad=datos['cantidad'],
-                    precio=datos['precio']
+                    precio=datos['precio'],
+                    stock_minimo=datos.get('stock_minimo', 0)
                 )
                 
                 msg = QMessageBox(self)
@@ -512,10 +466,10 @@ class InventarioView(QWidget):
                 msg.setText("Producto actualizado exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -541,10 +495,10 @@ class InventarioView(QWidget):
                 msg.setText(f"Error al actualizar producto: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -573,15 +527,15 @@ class InventarioView(QWidget):
         msg.setDefaultButton(QMessageBox.No)
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: white;
+                background-color: #ffffff;
             }
             QLabel {
-                color: black;
+                color: #2c2c2c;
                 font-size: 13px;
                 min-width: 300px;
             }
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c3e50;
                 color: white;
                 padding: 8px 20px;
                 border: none;
@@ -591,7 +545,7 @@ class InventarioView(QWidget):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #3d5166;
             }
         """)
         respuesta = msg.exec()
@@ -605,10 +559,10 @@ class InventarioView(QWidget):
                 msg.setText("Producto eliminado exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -634,10 +588,10 @@ class InventarioView(QWidget):
                 msg.setText(f"Error al eliminar producto: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }

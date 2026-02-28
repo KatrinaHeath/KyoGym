@@ -36,16 +36,18 @@ class SidebarButton(QPushButton):
                 padding: 15px 20px;
                 border: none;
                 background-color: transparent;
-                color: #ecf0f1;
+                color: #cccccc;
                 font-size: 14px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #34495e;
+                background-color: #1e1e1e;
+                color: #ffffff;
             }
             QPushButton:checked {
-                background-color: #3498db;
-                border-left: 4px solid #2980b9;
+                background-color: #1a1a1a;
+                color: #ffffff;
+                border-left: 4px solid #c0c0c0;
             }
         """)
 
@@ -91,7 +93,7 @@ class MainWindow(QMainWindow):
             
             # Contenedor de vistas
             self.stack = QStackedWidget()
-            self.stack.setStyleSheet("background-color: #f5f6fa;")
+            self.stack.setStyleSheet("background-color: #f8f8f8;")
             
             # Agregar vistas
             print("Creando dashboard...")
@@ -132,7 +134,7 @@ class MainWindow(QMainWindow):
     def crear_sidebar(self):
         """Crea el sidebar de navegación"""
         sidebar = QFrame()
-        sidebar.setStyleSheet("background-color: #2c3e50;")
+        sidebar.setStyleSheet("background-color: #111111;")
         sidebar.setMaximumWidth(250)
         
         layout = QVBoxLayout(sidebar)
@@ -141,36 +143,35 @@ class MainWindow(QMainWindow):
         
         # Logo/Título
         header_widget = QWidget()
-        header_widget.setStyleSheet("background-color: #1a252f;")
+        header_widget.setStyleSheet("background-color: #0a0a0a;")
         header_layout = QVBoxLayout(header_widget)
-        header_layout.setContentsMargins(20, 20, 20, 10)
-        header_layout.setSpacing(5)
+        header_layout.setContentsMargins(20, 24, 20, 24)
+        header_layout.setSpacing(0)
         
         # Logo
         logo_label = QLabel()
         logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
         if os.path.exists(logo_path):
             pixmap = QPixmap(logo_path)
-            # Escalar el logo a 80x80 píxeles manteniendo la proporción
-            scaled_pixmap = pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            # Escalar el logo a 90x90 píxeles manteniendo la proporción
+            scaled_pixmap = pixmap.scaled(115, 115, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo_label.setPixmap(scaled_pixmap)
             logo_label.setAlignment(Qt.AlignCenter)
             header_layout.addWidget(logo_label)
-        
-        # Título
-        titulo = QLabel("KyoGym")
-        titulo.setFont(QFont("Arial", 18, QFont.Bold))
-        titulo.setStyleSheet("color: #3498db; background-color: transparent;")
-        titulo.setAlignment(Qt.AlignCenter)
-        header_layout.addWidget(titulo)
         
         layout.addWidget(header_widget)
         
         # Separador
         separador = QFrame()
         separador.setFrameShape(QFrame.HLine)
-        separador.setStyleSheet("background-color: #34495e;")
+        separador.setStyleSheet("background-color: #2a2a2a;")
         layout.addWidget(separador)
+
+        # Espaciado entre separador y botones
+        spacer_top = QWidget()
+        spacer_top.setFixedHeight(8)
+        spacer_top.setStyleSheet("background: transparent;")
+        layout.addWidget(spacer_top)
         
         # Botones de navegación
         self.btn_inicio = SidebarButton("🏠 Inicio")
@@ -194,6 +195,12 @@ class MainWindow(QMainWindow):
         # Espacio flexible
         layout.addStretch()
         
+        # Separador antes del perfil
+        separador_perfil = QFrame()
+        separador_perfil.setFrameShape(QFrame.HLine)
+        separador_perfil.setStyleSheet("background-color: #34495e;")
+        layout.addWidget(separador_perfil)
+        
         # Widget de perfil de usuario
         perfil_widget = self.crear_widget_perfil()
         layout.addWidget(perfil_widget)
@@ -201,7 +208,7 @@ class MainWindow(QMainWindow):
         # Separador antes de configuración
         separador2 = QFrame()
         separador2.setFrameShape(QFrame.HLine)
-        separador2.setStyleSheet("background-color: #34495e;")
+        separador2.setStyleSheet("background-color: #2a2a2a;")
         layout.addWidget(separador2)
         
         # Botón de configuración al final
@@ -216,8 +223,8 @@ class MainWindow(QMainWindow):
         perfil_frame = QFrame()
         perfil_frame.setStyleSheet("""
             QFrame {
-                background-color: #1a252f;
-                border-radius: 5px;
+                background-color: transparent;
+                border: none;
                 padding: 10px;
             }
         """)
@@ -234,7 +241,7 @@ class MainWindow(QMainWindow):
         # Nombre del usuario (nombre completo)
         self.nombre_usuario_label = QLabel(self.nombre_completo)
         self.nombre_usuario_label.setStyleSheet("""
-            color: #ecf0f1;
+            color: #c0c0c0;
             font-size: 13px;
             font-weight: bold;
             background-color: transparent;
@@ -263,10 +270,7 @@ class MainWindow(QMainWindow):
         """Oculta la ventana principal y muestra el login."""
         self.hide()
         login = LoginDialog()
-        try:
-            login.showMaximized()
-        except Exception:
-            login.show()
+        login.show()
         if login.exec() == QDialog.Accepted:
             nuevo = obtener_usuario_activo()
             self.usuario_activo = nuevo
@@ -295,11 +299,18 @@ class MainWindow(QMainWindow):
         # Cambiar vista
         self.stack.setCurrentIndex(indice)
         
-        # Recargar datos si es dashboard
+        # Recargar datos al cambiar de módulo
         if indice == 0:
             self.dashboard_view.cargar_datos()
+        elif indice == 1:
+            self.membresias_view.cargar_datos()
+        elif indice == 2:
+            self.clientes_view.cargar_datos()
         elif indice == 3:
+            self.pagos_view.cargar_datos()
             self.pagos_view.actualizar_total_mes()
+        elif indice == 4:
+            self.inventario_view.cargar_datos()
 
 
 def main():
@@ -318,18 +329,38 @@ def main():
     
     # Configurar estilo global
     app.setStyle("Fusion")
+
+    # Forzar texto negro en todos los QMessageBox (evita texto blanco en tema oscuro)
+    app.setStyleSheet("""
+        QMessageBox {
+            background-color: #ffffff;
+        }
+        QMessageBox QLabel {
+            color: #000000;
+            font-size: 13px;
+        }
+        QMessageBox QPushButton {
+            color: #ffffff;
+            background-color: #2c3e50;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: bold;
+            min-width: 80px;
+        }
+        QMessageBox QPushButton:hover {
+            background-color: #3d5166;
+        }
+    """)
     
     # Inicializar base de datos y crear usuario por defecto si es necesario
     init_database()
     ensure_default_user()
 
-    # Mostrar diálogo de login (maximizado)
+    # Mostrar diálogo de login en tamaño fijo
     login = LoginDialog()
-    try:
-        login.showMaximized()
-    except Exception:
-        # en entornos donde showMaximized no aplica, al menos maximizar la ventana
-        login.show()
+    login.show()
     if login.exec() != QDialog.Accepted:
         sys.exit(0)
 

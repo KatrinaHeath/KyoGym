@@ -1,11 +1,13 @@
 """Vista de configuración del sistema"""
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                                QFrame, QLineEdit, QPushButton, QGroupBox,
-                               QFormLayout, QComboBox, QSpinBox, QCheckBox, QDialog,
+                               QFormLayout, QComboBox, QSpinBox, QDialog,
                                QMessageBox, QScrollArea, QFileDialog,
                                QTableWidget, QTableWidgetItem, QHeaderView)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QPixmap
+from utils.iconos_ui import crear_boton_icono
+from utils.table_styles import aplicar_estilo_tabla_moderna
 from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit, crear_validador_email
 from usuario_activo import obtener_usuario_activo
 from db import create_user, get_all_users, delete_user
@@ -29,18 +31,8 @@ class VerUsuariosDialog(QDialog):
 
     def _init_ui(self):
         self.setStyleSheet("""
-            QDialog { background-color: white; }
-            QLabel { color: #2c3e50; font-size: 13px; border: none; background: transparent; }
-            QTableWidget {
-                border: 2px solid #000000; border-radius: 5px;
-                gridline-color: #e0e0e0; font-size: 13px; color: #000;
-                background-color: white;
-            }
-            QHeaderView::section {
-                background-color: #2c3e50; color: white;
-                font-weight: bold; font-size: 13px;
-                padding: 6px; border: none;
-            }
+            QDialog { background-color: #f5f5f5; }
+            QLabel { color: #1a1a1a; font-size: 13px; border: none; background: transparent; }
             QPushButton#btn_cerrar {
                 background-color: #7f8c8d; color: white;
                 padding: 8px 20px; border: none;
@@ -54,7 +46,7 @@ class VerUsuariosDialog(QDialog):
 
         titulo = QLabel("Usuarios registrados")
         titulo.setFont(QFont("Arial", 15, QFont.Bold))
-        titulo.setStyleSheet("color: #2c3e50; margin-bottom: 4px; border: none; background: transparent;")
+        titulo.setStyleSheet("color: #1a1a1a; margin-bottom: 4px; border: none; background: transparent;")
         layout.addWidget(titulo)
 
         self.tabla = QTableWidget(0, 4)
@@ -67,6 +59,7 @@ class VerUsuariosDialog(QDialog):
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.verticalHeader().setVisible(False)
+        aplicar_estilo_tabla_moderna(self.tabla, compacta=True)
         layout.addWidget(self.tabla)
 
         btn_layout = QHBoxLayout()
@@ -86,17 +79,7 @@ class VerUsuariosDialog(QDialog):
             self.tabla.setItem(row, 1, QTableWidgetItem(username))
             self.tabla.setItem(row, 2, QTableWidgetItem(u['role']))
 
-            btn_del = QPushButton("🗑️ Eliminar")
-            btn_del.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c; color: white;
-                    padding: 4px 10px; border: none;
-                    border-radius: 4px; font-weight: bold; font-size: 12px;
-                    margin: 2px;
-                }
-                QPushButton:hover { background-color: #c0392b; }
-                QPushButton:disabled { background-color: #bdc3c7; color: #888; }
-            """)
+            btn_del = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar usuario")
             if username == self.usuario_activo:
                 btn_del.setEnabled(False)
                 btn_del.setToolTip("No puedes eliminar tu propio usuario")
@@ -109,8 +92,8 @@ class VerUsuariosDialog(QDialog):
         msg.setWindowTitle("Confirmar")
         msg.setText(f"¿Eliminar el usuario \'{username}\'?\nEsta acción no se puede deshacer.")
         msg.setStyleSheet("""
-            QMessageBox { background-color: white; }
-            QLabel { color: black; font-size: 14px; min-width: 280px; border: none; }
+            QMessageBox { background-color: #f5f5f5; }
+            QLabel { color: #2c2c2c; font-size: 14px; min-width: 280px; border: none; }
             QPushButton {
                 background-color: #2c3e50; color: white;
                 padding: 8px 20px; border: none;
@@ -143,12 +126,12 @@ class CrearUsuarioDialog(QDialog):
 
     def _init_ui(self):
         self.setStyleSheet("""
-            QDialog { background-color: white; }
-            QLabel { color: #2c3e50; font-size: 13px; }
+            QDialog { background-color: #f5f5f5; }
+            QLabel { color: #1a1a1a; font-size: 13px; }
             QLineEdit, QComboBox {
-                padding: 7px; font-size: 13px; color: #000;
-                border: 2px solid #000000; border-radius: 5px;
-                background-color: white;
+                padding: 7px; font-size: 13px; color: #1a1a1a;
+                border: 2px solid #d0d0d0; border-radius: 5px;
+                background-color: #f5f5f5;
             }
             QPushButton {
                 background-color: #27ae60; color: white;
@@ -163,7 +146,7 @@ class CrearUsuarioDialog(QDialog):
 
         titulo = QLabel("Nuevo usuario")
         titulo.setFont(QFont("Arial", 15, QFont.Bold))
-        titulo.setStyleSheet("color: #2c3e50; margin-bottom: 6px;")
+        titulo.setStyleSheet("color: #1a1a1a; margin-bottom: 6px;")
         layout.addWidget(titulo)
 
         form = QFormLayout()
@@ -244,7 +227,7 @@ class ConfiguracionView(QWidget):
         # Área con scroll
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background-color: #f5f6fa; }")
+        scroll.setStyleSheet("QScrollArea { border: none; background-color: #f8f8f8; }")
         
         # Widget contenedor
         container = QWidget()
@@ -257,13 +240,13 @@ class ConfiguracionView(QWidget):
         # Título
         titulo = QLabel("⚙️ Configuración del Sistema")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #2c3e50; background-color: transparent;")
+        titulo.setStyleSheet("color: #1a1a1a; background-color: transparent;")
         layout.addWidget(titulo)
         
         # Separador
         separador = QFrame()
         separador.setFrameShape(QFrame.HLine)
-        separador.setStyleSheet("background-color: #bdc3c7;")
+        separador.setStyleSheet("background-color: #d8d8d8;")
         layout.addWidget(separador)
         
         # Información del Gimnasio
@@ -272,12 +255,6 @@ class ConfiguracionView(QWidget):
         # Logo del Gimnasio
         layout.addWidget(self.crear_grupo_logo())
         
-        # Configuración de Notificaciones
-        layout.addWidget(self.crear_grupo_notificaciones())
-        
-        # Configuración de Facturas
-        layout.addWidget(self.crear_grupo_facturas())
-
         # Gestión de Usuarios (solo admin / prueba)
         self._grupo_usuarios = self._crear_grupo_usuarios()
         self._grupo_usuarios.setVisible(False)
@@ -353,7 +330,7 @@ class ConfiguracionView(QWidget):
         # Forzar color negro global en QLabel para mejor legibilidad
         self.setStyleSheet("""
             QLabel {
-                color: #000000;
+                color: #1a1a1a;
             }
         """)
     
@@ -364,9 +341,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #000000;
-                background-color: white;
-                border: 2px solid #000000;
+                color: #555555;
+                background-color: #f5f5f5;
+                border: 1px solid #000000;
                 border-radius: 8px;
                 margin-top: 10px;
                 padding-top: 10px;
@@ -382,7 +359,7 @@ class ConfiguracionView(QWidget):
         layout.setSpacing(12)
 
         lbl = QLabel("Administra los usuarios que pueden acceder al sistema.")
-        lbl.setStyleSheet("color: #555; font-size: 13px;")
+        lbl.setStyleSheet("color: #666666; font-size: 13px;")
         layout.addWidget(lbl)
 
         btns_layout = QHBoxLayout()
@@ -446,9 +423,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #000000;
-                background-color: white;
-                border: 2px solid #000000;
+                color: #555555;
+                background-color: #f5f5f5;
+                border: 1px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -506,9 +483,9 @@ class ConfiguracionView(QWidget):
             QGroupBox {
                 font-size: 16px;
                 font-weight: bold;
-                color: #000000;
-                background-color: white;
-                border: 2px solid #000000;
+                color: #555555;
+                background-color: #f5f5f5;
+                border: 1px solid #000000;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
@@ -530,8 +507,8 @@ class ConfiguracionView(QWidget):
         self.logo_preview = QLabel()
         self.logo_preview.setFixedSize(120, 120)
         self.logo_preview.setStyleSheet("""
-            border: 2px dashed #bdc3c7;
-            background-color: #ecf0f1;
+            border: 2px dashed #c0c0c0;
+            background-color: #f5f5f5;
             border-radius: 8px;
         """)
         self.logo_preview.setAlignment(Qt.AlignCenter)
@@ -588,94 +565,8 @@ class ConfiguracionView(QWidget):
         layout.addLayout(preview_layout)
         
         info_label = QLabel("Formatos soportados: PNG, JPG, ICO. Tamaño recomendado: 200x200px")
-        info_label.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+        info_label.setStyleSheet("color: #666666; font-size: 11px;")
         layout.addWidget(info_label)
-        
-        grupo.setLayout(layout)
-        return grupo
-    
-    def crear_grupo_notificaciones(self):
-        """Crea el grupo de notificaciones"""
-        grupo = QGroupBox("🔔 Notificaciones")
-        grupo.setStyleSheet("""
-            QGroupBox {
-                font-size: 16px;
-                font-weight: bold;
-                color: #000000;
-                background-color: white;
-                border: 2px solid #000000;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 0 5px;
-            }
-        """)
-        
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 25, 20, 20)
-        
-        # Checkboxes para notificaciones
-        self.chk_notif_vencimiento = QCheckBox("Alertas de vencimiento de membresías")
-        self.chk_notif_vencimiento.setChecked(True)
-        self.aplicar_estilo_checkbox(self.chk_notif_vencimiento)
-        
-        self.chk_notif_pagos = QCheckBox("Confirmación de pagos recibidos")
-        self.chk_notif_pagos.setChecked(True)
-        self.aplicar_estilo_checkbox(self.chk_notif_pagos)
-        
-        self.chk_notif_nuevos = QCheckBox("Nuevos clientes registrados")
-        self.chk_notif_nuevos.setChecked(True)
-        self.aplicar_estilo_checkbox(self.chk_notif_nuevos)
-        
-        layout.addWidget(self.chk_notif_vencimiento)
-        layout.addWidget(self.chk_notif_pagos)
-        layout.addWidget(self.chk_notif_nuevos)
-        
-        grupo.setLayout(layout)
-        return grupo
-    
-    def crear_grupo_facturas(self):
-        """Crea el grupo de configuración de facturas"""
-        grupo = QGroupBox("🧾 Configuración de Facturas")
-        grupo.setStyleSheet("""
-            QGroupBox {
-                font-size: 16px;
-                font-weight: bold;
-                color: #000000;
-                background-color: white;
-                border: 2px solid #000000;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 0 5px;
-            }
-        """)
-        
-        layout = QFormLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 25, 20, 20)
-        
-        # Formato de folio
-        self.txt_formato_folio = QLineEdit()
-        self.txt_formato_folio.setPlaceholderText("Ej: FAC-{YYYY}-{NNNN}")
-        self.aplicar_estilo_input(self.txt_formato_folio)
-        
-        # Auto-generar facturas
-        self.chk_auto_factura = QCheckBox("Generar factura automáticamente al recibir pago")
-        self.chk_auto_factura.setChecked(True)
-        self.aplicar_estilo_checkbox(self.chk_auto_factura)
-        
-        layout.addRow("Formato de folio:", self.txt_formato_folio)
-        layout.addRow("", self.chk_auto_factura)
         
         grupo.setLayout(layout)
         return grupo
@@ -685,74 +576,55 @@ class ConfiguracionView(QWidget):
         widget.setStyleSheet("""
             QLineEdit, QSpinBox, QComboBox {
                 padding: 10px;
-                border: 2px solid #bdc3c7;
+                border: 2px solid #d0d0d0;
                 border-radius: 6px;
-                background-color: white;
-                color: #000000;
+                background-color: #f5f5f5;
+                color: #1a1a1a;
                 font-size: 13px;
             }
             QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border: 2px solid #3498db;
+                border: 2px solid #c0c0c0;
             }
-            /* Forzar color de los items en los desplegables */
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #000000;
-                selection-background-color: #3498db;
+                background-color: #f5f5f5;
+                color: #1a1a1a;
+                selection-background-color: #808080;
                 selection-color: white;
             }
             QComboBox QAbstractItemView::item {
-                color: #000000;
+                color: #1a1a1a;
             }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #e8e8e8;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #555555;
+                background-color: #e8e8e8;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
             QPushButton {
-                color: black;
-            }
-        """)
-    
-    def aplicar_estilo_checkbox(self, checkbox):
-        """Aplica estilo a los checkboxes"""
-        checkbox.setStyleSheet("""
-            QCheckBox {
-                color: #000000;
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 20px;
-                height: 20px;
-                border: 2px solid #bdc3c7;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border-color: #3498db;
+                color: #1a1a1a;
             }
         """)
     
@@ -765,9 +637,9 @@ class ConfiguracionView(QWidget):
         else:
             self.logo_preview.setText("Sin logo\n📷")
             self.logo_preview.setStyleSheet("""
-                border: 2px dashed #bdc3c7;
-                background-color: #ecf0f1;
-                color: #95a5a6;
+                border: 2px dashed #c0c0c0;
+                background-color: #f5f5f5;
+                color: #666666;
                 font-size: 12px;
                 border-radius: 8px;
             """)
@@ -795,10 +667,10 @@ class ConfiguracionView(QWidget):
                 msg.setText("Logo actualizado correctamente.\nReinicie la aplicación para ver los cambios.")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -823,10 +695,10 @@ class ConfiguracionView(QWidget):
                 msg.setText(f"Error al copiar el logo:\n{str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -855,15 +727,15 @@ class ConfiguracionView(QWidget):
         msg.setDefaultButton(QMessageBox.No)
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: white;
+                background-color: #ffffff;
             }
             QLabel {
-                color: black;
+                color: #2c2c2c;
                 font-size: 13px;
                 min-width: 300px;
             }
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c3e50;
                 color: white;
                 padding: 8px 20px;
                 border: none;
@@ -873,7 +745,7 @@ class ConfiguracionView(QWidget):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #3d5166;
             }
         """)
         respuesta = msg.exec()
@@ -889,10 +761,10 @@ class ConfiguracionView(QWidget):
                     msg.setText("Logo eliminado correctamente.")
                     msg.setStyleSheet("""
                         QMessageBox {
-                            background-color: white;
+                            background-color: #f5f5f5;
                         }
                         QLabel {
-                            color: black;
+                            color: #2c2c2c;
                             font-size: 13px;
                             min-width: 300px;
                         }
@@ -917,10 +789,10 @@ class ConfiguracionView(QWidget):
                 msg.setText(f"Error al eliminar el logo:\n{str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -954,24 +826,16 @@ class ConfiguracionView(QWidget):
                     self.txt_email.setText(config.get('email', ''))
                     self.txt_rfc.setText(config.get('rfc', ''))
                     
-                    # Notificaciones
-                    self.chk_notif_vencimiento.setChecked(config.get('notif_vencimiento', True))
-                    self.chk_notif_pagos.setChecked(config.get('notif_pagos', True))
-                    self.chk_notif_nuevos.setChecked(config.get('notif_nuevos', True))
-                    
-                    # Facturas
-                    self.txt_formato_folio.setText(config.get('formato_folio', 'FAC-{YYYY}-{NNNN}'))
-                    self.chk_auto_factura.setChecked(config.get('auto_factura', True))
         except Exception as e:
             msg = QMessageBox(self)
             msg.setWindowTitle("Advertencia")
             msg.setText(f"Error al cargar configuración:\n{str(e)}\n\nSe usarán valores por defecto.")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -1011,11 +875,6 @@ class ConfiguracionView(QWidget):
                 'telefono': self.txt_telefono.text(),
                 'email': self.txt_email.text(),
                 'rfc': self.txt_rfc.text(),
-                'notif_vencimiento': self.chk_notif_vencimiento.isChecked(),
-                'notif_pagos': self.chk_notif_pagos.isChecked(),
-                'notif_nuevos': self.chk_notif_nuevos.isChecked(),
-                'formato_folio': self.txt_formato_folio.text(),
-                'auto_factura': self.chk_auto_factura.isChecked(),
                 'dias_alerta_vencimiento': dias_alerta
             }
             
@@ -1028,10 +887,10 @@ class ConfiguracionView(QWidget):
             msg.setText("Configuración guardada correctamente.")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -1056,10 +915,10 @@ class ConfiguracionView(QWidget):
             msg.setText(f"Error al guardar configuración:\n{str(e)}")
             msg.setStyleSheet("""
                 QMessageBox {
-                    background-color: white;
+                    background-color: #f5f5f5;
                 }
                 QLabel {
-                    color: black;
+                    color: #2c2c2c;
                     font-size: 13px;
                     min-width: 300px;
                 }
@@ -1088,15 +947,15 @@ class ConfiguracionView(QWidget):
         msg.setDefaultButton(QMessageBox.No)
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: white;
+                background-color: #ffffff;
             }
             QLabel {
-                color: black;
+                color: #2c2c2c;
                 font-size: 13px;
                 min-width: 300px;
             }
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c3e50;
                 color: white;
                 padding: 8px 20px;
                 border: none;
@@ -1106,7 +965,7 @@ class ConfiguracionView(QWidget):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #3d5166;
             }
         """)
         respuesta = msg.exec()
@@ -1118,11 +977,6 @@ class ConfiguracionView(QWidget):
             self.txt_email.setText("")
             # Restablecer demás campos
             self.txt_rfc.setText("")
-            self.chk_notif_vencimiento.setChecked(True)
-            self.chk_notif_pagos.setChecked(True)
-            self.chk_notif_nuevos.setChecked(True)
-            self.txt_formato_folio.setText("FAC-{YYYY}-{NNNN}")
-            self.chk_auto_factura.setChecked(True)
             
     def cerrar_sesion(self):
         """Cierra la sesión actual y regresa al login."""
@@ -1130,8 +984,8 @@ class ConfiguracionView(QWidget):
         msg.setWindowTitle("Confirmar")
         msg.setText("¿Desea cerrar la sesión actual?")
         msg.setStyleSheet("""
-            QMessageBox { background-color: white; }
-            QLabel { color: black; font-size: 14px; min-width: 280px; border: none; }
+            QMessageBox { background-color: #f5f5f5; }
+            QLabel { color: #2c2c2c; font-size: 14px; min-width: 280px; border: none; }
             QPushButton {
                 background-color: #2c3e50;
                 color: white;
@@ -1152,3 +1006,4 @@ class ConfiguracionView(QWidget):
 
         # Emitir señal para que MainWindow gestione el regreso al login
         self.logout_solicitado.emit()
+

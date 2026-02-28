@@ -1,6 +1,16 @@
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QMessageBox,
+    QWidget,
+    QFrame,
+)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QFont
+from PySide6.QtGui import QPixmap, QFont, QPainter, QPainterPath
 import os
 from db import verify_user
 from usuario_activo import guardar_usuario_activo
@@ -10,7 +20,7 @@ class LoginDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("KyoGym - Iniciar sesión")
-        self.setMinimumSize(700, 420)
+        self.setMinimumSize(980, 620)
         # Permitir que el diálogo se muestre como ventana principal para poder maximizar
         self.setWindowFlag(Qt.Window)
         self.init_ui()
@@ -20,131 +30,193 @@ class LoginDialog(QDialog):
         assets_path = os.path.join(root, "assets")
         logo_path = os.path.join(assets_path, "logo.png")
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0a0a0a;
+            }
+            QMessageBox {
+                background-color: #ffffff;
+            }
+            QMessageBox QLabel {
+                color: #000000;
+                font-size: 13px;
+            }
+            QMessageBox QPushButton {
+                color: #ffffff;
+                background-color: #2c3e50;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 20px;
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #3d5166;
+            }
+            QFrame#LoginCard {
+                background-color: #111111;
+                border: 1px solid #4d4d4d;
+                border-radius: 18px;
+            }
+            QLabel#BrandLabel {
+                color: #cfcfcf;
+                font-size: 13px;
+                font-weight: 600;
+                letter-spacing: 0.4px;
+            }
+            QLabel#TitleLabel {
+                color: #ffffff;
+                font-size: 30px;
+                font-weight: 700;
+                letter-spacing: 1px;
+            }
+            QLabel#SubTitleLabel {
+                color: #dddddd;
+                font-size: 15px;
+            }
+            QLabel#FieldLabel {
+                color: #efefef;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLineEdit {
+                background-color: transparent;
+                color: #ffffff;
+                border: 2px solid #8f8f8f;
+                border-radius: 16px;
+                padding: 10px 14px;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #ffffff;
+            }
+            QLineEdit::placeholder {
+                color: #b5b5b5;
+            }
+            QPushButton#LoginButton {
+                background-color: #c0c0c0;
+                color: #000000;
+                border: 2px solid #ffffff;
+                border-radius: 17px;
+                font-size: 16px;
+                font-weight: 700;
+                padding: 10px;
+            }
+            QPushButton#LoginButton:hover {
+                background-color: #d8d8d8;
+            }
+            QLabel#CircleBorder {
+                border: 4px solid #c0c0c0;
+                border-radius: 160px;
+                background-color: #181818;
+            }
+            QLabel#AccentText {
+                color: #d0d0d0;
+                font-size: 13px;
+                font-weight: 600;
+            }
+        """)
 
-        # Left panel with logo and illustration
-        left = QWidget()
-        left.setStyleSheet("background-color: #000000; color: white;")
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(60, 60, 60, 60)
-        left_layout.setSpacing(32)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(48, 48, 48, 48)
+
+        login_card = QFrame()
+        login_card.setObjectName("LoginCard")
+        card_layout = QHBoxLayout(login_card)
+        card_layout.setContentsMargins(34, 30, 34, 30)
+        card_layout.setSpacing(22)
+
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(12, 6, 20, 6)
+        left_layout.setSpacing(14)
+
+        brand = QLabel("KyoGym")
+        brand.setObjectName("BrandLabel")
+        left_layout.addWidget(brand)
+
+        title = QLabel("¡BIENVENIDO DE NUEVO!")
+        title.setObjectName("TitleLabel")
+        left_layout.addWidget(title)
+
+        subtitle = QLabel("Accede a tu panel")
+        subtitle.setObjectName("SubTitleLabel")
+        left_layout.addWidget(subtitle)
+
+        lbl_user = QLabel("Usuario")
+        lbl_user.setObjectName("FieldLabel")
+        left_layout.addWidget(lbl_user)
+
+        self.input_user = QLineEdit()
+        self.input_user.setPlaceholderText("Ingresa tu usuario")
+        self.input_user.setMinimumHeight(44)
+        left_layout.addWidget(self.input_user)
+
+        lbl_pass = QLabel("Contraseña")
+        lbl_pass.setObjectName("FieldLabel")
+        left_layout.addWidget(lbl_pass)
+
+        self.input_pass = QLineEdit()
+        self.input_pass.setPlaceholderText("••••••••")
+        self.input_pass.setEchoMode(QLineEdit.Password)
+        self.input_pass.setMinimumHeight(44)
+        left_layout.addWidget(self.input_pass)
+
+        self.btn_login = QPushButton("Iniciar sesión")
+        self.btn_login.setObjectName("LoginButton")
+        self.btn_login.setMinimumHeight(46)
+        self.btn_login.clicked.connect(self.attempt_login)
+        left_layout.addWidget(self.btn_login)
+        left_layout.addStretch()
+
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(8, 8, 8, 8)
+        right_layout.setSpacing(14)
+        right_layout.addStretch()
+
+        circle = QLabel()
+        circle.setObjectName("CircleBorder")
+        circle.setFixedSize(320, 320)
+        circle.setAlignment(Qt.AlignCenter)
 
         if os.path.exists(logo_path):
             pix = QPixmap(logo_path)
-            # Center-crop the pixmap to a square (head approximation)
-            w = pix.width()
-            h = pix.height()
-            side = min(w, h)
-            x = (w - side) // 2
-            y = (h - side) // 4  # bias hacia la parte superior
-            try:
-                head = pix.copy(x, y, side, side)
-            except Exception:
-                head = pix
-            head = head.scaled(350, 350, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            lbl_logo = QLabel()
-            lbl_logo.setPixmap(head)
-            lbl_logo.setAlignment(Qt.AlignCenter)
-            left_layout.setAlignment(lbl_logo, Qt.AlignHCenter)
-            left_layout.addWidget(lbl_logo)
+            if not pix.isNull():
+                circle_pix = self._create_round_pixmap(pix, 292)
+                circle.setPixmap(circle_pix)
+        else:
+            circle.setText("KyoGym")
+            circle.setStyleSheet("color: #ffffff; font-size: 28px; font-weight: bold;")
 
-        # Botón "Crear cuenta" en el lado izquierdo
-        left_layout.addStretch()
-        layout.addWidget(left, 1)
-
-        # Right panel with form
-        right = QWidget()
-        right.setStyleSheet("background-color: white;")
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(40, 80, 40, 40)
-        right_layout.setSpacing(14)
-
-        lbl_signin = QLabel("Iniciar sesión")
-        lbl_signin.setFont(QFont("Arial", 18, QFont.Bold))
-        lbl_signin.setStyleSheet("color: #2c3e50;")
-        right_layout.addWidget(lbl_signin)
-
-        # Right panel with form
-        right = QWidget()
-        right.setStyleSheet("background-color: white;")
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(40, 80, 40, 40)
-        right_layout.setSpacing(14)
-
-        lbl_signin = QLabel("Iniciar sesión")
-        lbl_signin.setFont(QFont("Arial", 18, QFont.Bold))
-        lbl_signin.setStyleSheet("color: #2c3e50;")
-        right_layout.addWidget(lbl_signin)
-
-        # Márgenes horizontales para centrar los inputs
-        inputs_wrapper = QHBoxLayout()
-        inputs_wrapper.addStretch()
-        
-        # Container para los inputs
-        inputs_layer = QVBoxLayout()
-        inputs_layer.setContentsMargins(0, 0, 0, 0)
-        inputs_layer.setSpacing(14)
-
-        self.input_user = QLineEdit()
-        self.input_user.setPlaceholderText("Usuario")
-        self.input_user.setMinimumHeight(44)
-        self.input_user.setStyleSheet(
-            "QLineEdit { padding: 8px; font-size: 14px; color: #000000; background-color: #ffffff; border: 1px solid #ddd; border-radius: 6px;}"
-            "QLineEdit::placeholder { color: #9aa0a6; }"
-        )
-        inputs_layer.addWidget(self.input_user)
-
-        self.input_pass = QLineEdit()
-        self.input_pass.setPlaceholderText("Contraseña")
-        self.input_pass.setEchoMode(QLineEdit.Password)
-        self.input_pass.setMinimumHeight(44)
-        self.input_pass.setStyleSheet(
-            "QLineEdit { padding: 8px; font-size: 14px; color: #000000; background-color: #ffffff; border: 1px solid #ddd; border-radius: 6px;}"
-            "QLineEdit::placeholder { color: #9aa0a6; }"
-        )
-        inputs_layer.addWidget(self.input_pass)
-
-        self.btn_login = QPushButton("Ingresar")
-        self.btn_login.setMinimumHeight(44)
-        # Botón con detalle plateado
-        self.btn_login.setStyleSheet(
-            "QPushButton { background-color: #C0C0C0; color: #000000; border-radius: 8px; font-weight: bold; padding: 8px 12px; }"
-            "QPushButton:hover { background-color: #aeb0b0; }"
-        )
-        self.btn_login.clicked.connect(self.attempt_login)
-        inputs_layer.addWidget(self.btn_login)
-
-        inputs_wrapper.addLayout(inputs_layer, 2)
-        inputs_wrapper.addStretch()
-
-        right_layout.addLayout(inputs_wrapper)
-
-        # Small helper text
-        hint = QLabel("Usuario por defecto: admin / admin123")
-        hint.setStyleSheet("color: #7f8c8d; font-size: 12px;")
-        right_layout.addWidget(hint)
-
-        # Row with forgot password link
-        actions_layout = QHBoxLayout()
-
-        lbl_forgot = QLabel("¿Olvidaste tu contraseña?")
-        lbl_forgot.setStyleSheet("color: #3498db; text-decoration: underline;")
-        lbl_forgot.setCursor(Qt.PointingHandCursor)
-        lbl_forgot.mousePressEvent = lambda event: self.forgot_password()
-        actions_layout.addStretch()
-        actions_layout.addWidget(lbl_forgot)
-
-        right_layout.addLayout(actions_layout)
+        right_layout.addWidget(circle, alignment=Qt.AlignCenter)
 
         right_layout.addStretch()
 
-        layout.addWidget(right, 1)
+        card_layout.addWidget(left_panel, 5)
+        card_layout.addWidget(right_panel, 5)
+        main_layout.addWidget(login_card)
 
-        # Estilos generales del diálogo (bordes negros y detalles dorados)
-        self.setStyleSheet("""
-            QDialog { background-color: #000000; }
-        """)
+    def _create_round_pixmap(self, source: QPixmap, diameter: int) -> QPixmap:
+        side = min(source.width(), source.height())
+        x = (source.width() - side) // 2
+        y = (source.height() - side) // 2
+        square = source.copy(x, y, side, side)
+        square = square.scaled(diameter, diameter, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+
+        output = QPixmap(diameter, diameter)
+        output.fill(Qt.transparent)
+
+        painter = QPainter(output)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        path = QPainterPath()
+        path.addEllipse(0, 0, diameter, diameter)
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, square)
+        painter.end()
+
+        return output
 
     def attempt_login(self):
         username = self.input_user.text().strip()
@@ -161,9 +233,6 @@ class LoginDialog(QDialog):
                 QMessageBox.warning(self, "Error", "Usuario o contraseña incorrectos.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error al verificar credenciales: {e}")
-
-    def forgot_password(self):
-        QMessageBox.information(self, "Recuperar contraseña", "Contacta al administrador para restablecer tu contraseña.")
 
 
 

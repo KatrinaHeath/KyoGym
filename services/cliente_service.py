@@ -25,15 +25,15 @@ def verificar_telefono_existente(telefono, excluir_id=None):
     return dict(cliente) if cliente else None
 
 
-def crear_cliente(nombre, telefono="", sexo="", fecha_nacimiento=None):
+def crear_cliente(nombre, telefono="", sexo="", fecha_nacimiento=None, email=""):
     """Crea un nuevo cliente"""
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
-        INSERT INTO clientes (nombre, telefono, sexo, fecha_nacimiento, fecha_registro)
-        VALUES (?, ?, ?, ?, ?)
-    """, (nombre, telefono, sexo, fecha_nacimiento, date.today().isoformat()))
+        INSERT INTO clientes (nombre, telefono, sexo, fecha_nacimiento, fecha_registro, email)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (nombre, telefono, sexo, fecha_nacimiento, date.today().isoformat(), email))
     
     cliente_id = cursor.lastrowid
     conn.commit()
@@ -79,16 +79,16 @@ def listar_clientes(buscar="", solo_activos=True):
     return clientes
 
 
-def actualizar_cliente(cliente_id, nombre, telefono="", sexo="", fecha_nacimiento=None):
+def actualizar_cliente(cliente_id, nombre, telefono="", sexo="", fecha_nacimiento=None, email=""):
     """Actualiza los datos de un cliente"""
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
         UPDATE clientes 
-        SET nombre = ?, telefono = ?, sexo = ?, fecha_nacimiento = ?
+        SET nombre = ?, telefono = ?, sexo = ?, fecha_nacimiento = ?, email = ?
         WHERE id = ?
-    """, (nombre, telefono, sexo, fecha_nacimiento, cliente_id))
+    """, (nombre, telefono, sexo, fecha_nacimiento, email, cliente_id))
     
     conn.commit()
     conn.close()

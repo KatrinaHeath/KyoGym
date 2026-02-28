@@ -7,33 +7,35 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QColor
 from datetime import date
 from services import cliente_service
-from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit
+from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
+from utils.table_styles import aplicar_estilo_tabla_moderna
+from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit, crear_validador_email
 
 
 class FechaTableWidgetItem(QTableWidgetItem):
     """Ítem de tabla que ordena fechas en formato dd/MM/yyyy correctamente"""
-    def _fecha_para_orden(self):
-        texto = self.text().strip()
+    def __init__(self, texto):
+        super().__init__(texto)
+        # Guardar ordinal como dato de ordenamiento (UserRole) para soporte fiable en PySide6
+        ordinal = self._calcular_ordinal(texto)
+        self.setData(Qt.UserRole, ordinal)
+
+    @staticmethod
+    def _calcular_ordinal(texto):
+        texto = texto.strip()
         if not texto or texto == "-":
-            return date.min
+            return 0
         try:
-            return date.fromisoformat("-".join(reversed(texto.split("/"))))
-        except ValueError:
-            return date.min
+            d = date.fromisoformat("-".join(reversed(texto.split("/"))))
+            return d.toordinal()
+        except (ValueError, IndexError):
+            return 0
 
     def __lt__(self, other):
-        if isinstance(other, QTableWidgetItem):
-            otra_fecha = date.min
-            if isinstance(other, FechaTableWidgetItem):
-                otra_fecha = other._fecha_para_orden()
-            else:
-                texto = other.text().strip()
-                if texto and texto != "-":
-                    try:
-                        otra_fecha = date.fromisoformat("-".join(reversed(texto.split("/"))))
-                    except ValueError:
-                        otra_fecha = date.min
-            return self._fecha_para_orden() < otra_fecha
+        my_ord = self.data(Qt.UserRole)
+        other_ord = other.data(Qt.UserRole) if isinstance(other, QTableWidgetItem) else None
+        if my_ord is not None and other_ord is not None:
+            return my_ord < other_ord
         return super().__lt__(other)
 
 
@@ -55,73 +57,85 @@ class AgregarClienteDialog(QDialog):
         # Estilos para el diálogo
         self.setStyleSheet("""
             QDialog {
-                background-color: white;
+                background-color: #f5f5f5;
             }
             QLabel {
-                color: #2c3e50;
+                color: #2c2c2c;
                 font-size: 13px;
             }
             QLineEdit, QComboBox, QDateEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 4px;
-                background-color: white;
-                color: #2c3e50;
+                background-color: #f5f5f5;
+                color: #1a1a1a;
                 font-size: 13px;
             }
             QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
-                border: 2px solid #3498db;
+                border: 2px solid #c0c0c0;
             }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #3498db;
-                selection-color: black;
-                color: black;
+                selection-background-color: #808080;
+                selection-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget {
-                color: black;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QToolButton {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QMenu {
-                color: black;
-                background-color: white;
+                color: #2c2c2c;
+                background-color: #f5f5f5;
             }
             QCalendarWidget QSpinBox {
-                color: white;
-                background-color: #3498db;
+                color: #2c2c2c;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QAbstractItemView:enabled {
-                color: black;
+                color: #2c2c2c;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_prevmonth,
             QCalendarWidget QWidget#qt_calendar_navigationbar QToolButton#qt_calendar_nextmonth {
                 qproperty-icon: none;
             }
             QCalendarWidget QAbstractItemView::item:disabled {
-                color: #cccccc;
+                color: #555555;
             }
             QCalendarWidget QTableView::item:selected {
-                background-color: #3498db;
+                background-color: #808080;
                 color: white;
             }
             QCalendarWidget QWidget {
-                alternate-background-color: white;
+                alternate-background-color: #f5f5f5;
             }
             QCalendarWidget QAbstractItemView:enabled[isHeaderRow="true"] {
-                color: white;
+                color: #555555;
                 font-weight: bold;
-                background-color: #3498db;
+                background-color: #f0f0f0;
             }
             QCalendarWidget QTableView {
-                color: black;
+                color: #2c2c2c;
             }
             QPushButton {
-                color: black;
+                background-color: #2c3e50;
+                color: white;
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #3d5166;
             }
         """)
         
@@ -147,6 +161,12 @@ class AgregarClienteDialog(QDialog):
         self.fecha_nacimiento.setDisplayFormat("dd/MM/yyyy")
         layout.addRow("Fecha de Nacimiento:", self.fecha_nacimiento)
         
+        # Email
+        self.email = QLineEdit()
+        self.email.setPlaceholderText("correo@ejemplo.com (opcional)")
+        self.email.setValidator(crear_validador_email())
+        layout.addRow("Email:", self.email)
+        
         # Botones
         botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         botones.accepted.connect(self.aceptar)
@@ -168,39 +188,48 @@ class AgregarClienteDialog(QDialog):
         if self.cliente.get('fecha_nacimiento'):
             fecha = date.fromisoformat(self.cliente['fecha_nacimiento'])
             self.fecha_nacimiento.setDate(QDate(fecha.year, fecha.month, fecha.day))
+        
+        self.email.setText(self.cliente.get('email') or "")
     
     def aceptar(self):
         """Valida y acepta el diálogo"""
+        MSG_STYLE = """
+            QMessageBox { background-color: #ffffff; }
+            QLabel { color: #2c2c2c; font-size: 13px; min-width: 300px; }
+            QPushButton {
+                background-color: #2c3e50; color: white;
+                padding: 8px 20px; border: none; border-radius: 4px;
+                font-weight: bold; font-size: 13px; min-width: 80px;
+            }
+            QPushButton:hover { background-color: #3d5166; }
+        """
+
         if not self.nombre.text().strip():
             msg = QMessageBox(self)
             msg.setWindowTitle("Error")
             msg.setText("El nombre es requerido")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: white;
-                }
-                QLabel {
-                    color: black;
-                    font-size: 13px;
-                    min-width: 300px;
-                }
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 8px 20px;
-                    border: none;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-            """)
+            msg.setStyleSheet(MSG_STYLE)
             msg.exec()
             return
-        
+
+        email_texto = self.email.text().strip()
+        if email_texto and ("@" not in email_texto or "." not in email_texto):
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText("El email debe contener '@' y '.'")
+            msg.setStyleSheet(MSG_STYLE)
+            msg.exec()
+            return
+
+        fecha_nacimiento = self.fecha_nacimiento.date()
+        if fecha_nacimiento > QDate.currentDate():
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Error")
+            msg.setText("La fecha de nacimiento no puede ser futura")
+            msg.setStyleSheet(MSG_STYLE)
+            msg.exec()
+            return
+
         self.accept()
     
     def obtener_datos(self):
@@ -210,7 +239,8 @@ class AgregarClienteDialog(QDialog):
             'nombre': self.nombre.text().strip(),
             'telefono': self.telefono.text().strip(),
             'sexo': self.sexo.currentText(),
-            'fecha_nacimiento': date(fecha.year(), fecha.month(), fecha.day()).isoformat()
+            'fecha_nacimiento': date(fecha.year(), fecha.month(), fecha.day()).isoformat(),
+            'email': self.email.text().strip()
         }
 
 
@@ -235,7 +265,7 @@ class ClientesView(QWidget):
         
         titulo = QLabel("Clientes")
         titulo.setFont(QFont("Arial", 24, QFont.Bold))
-        titulo.setStyleSheet("color: #000000;")
+        titulo.setStyleSheet("color: #1a1a1a;")
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
@@ -247,10 +277,14 @@ class ClientesView(QWidget):
         self.buscar_input.setStyleSheet("""
             QLineEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
-                color: black;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
+            }
+            QLineEdit:focus {
+                border: 2px solid #c0c0c0;
             }
         """)
         self.buscar_input.textChanged.connect(self.cargar_datos)
@@ -259,7 +293,7 @@ class ClientesView(QWidget):
         btn_agregar = QPushButton("Agregar Cliente")
         btn_agregar.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
+                background-color: #2c6fad;
                 color: white;
                 padding: 10px 20px;
                 border: none;
@@ -268,7 +302,7 @@ class ClientesView(QWidget):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #229954;
+                background-color: #255d91;
                 color: white;
             }
         """)
@@ -282,26 +316,27 @@ class ClientesView(QWidget):
         
         # Filtros por género
         label_genero = QLabel("Género:")
-        label_genero.setStyleSheet("color: #000000; font-weight: bold;")
+        label_genero.setStyleSheet("color: #555555; font-weight: bold;")
         filtros_layout.addWidget(label_genero)
         
         estilo_botones = """
             QPushButton {
-                background-color: #f0f0f0;
-                color: #000000;
+                background-color: #eeeeee;
+                color: #555555;
                 padding: 8px 16px;
                 border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
-                border: 2px solid #b0b0b0;
+                background-color: #d8d8d8;
+                border: 2px solid #555555;
+                color: #1a1a1a;
             }
             QPushButton:checked {
-                background-color: #2196F3;
-                color: black;
-                border: 2px solid #1976D2;
+                background-color: #d8d8d8;
+                color: #555555;
+                border: 2px solid #c0c0c0;
             }
         """
         
@@ -327,12 +362,12 @@ class ClientesView(QWidget):
         
         # Separador
         separador = QLabel("|")
-        separador.setStyleSheet("color: #d0d0d0; font-size: 18px; padding: 0 10px;")
+        separador.setStyleSheet("color: #333333; font-size: 18px; padding: 0 10px;")
         filtros_layout.addWidget(separador)
         
         # Filtros por edad
         label_edad = QLabel("Edad:")
-        label_edad.setStyleSheet("color: #000000; font-weight: bold;")
+        label_edad.setStyleSheet("color: #555555; font-weight: bold;")
         filtros_layout.addWidget(label_edad)
         
         self.btn_todas_edades = QPushButton("Todas")
@@ -344,7 +379,7 @@ class ClientesView(QWidget):
         
         # Filtro menor que
         label_menor = QLabel("Menor que:")
-        label_menor.setStyleSheet("color: #000000;")
+        label_menor.setStyleSheet("color: #666666;")
         filtros_layout.addWidget(label_menor)
         
         self.input_menor_que = QLineEdit()
@@ -353,10 +388,11 @@ class ClientesView(QWidget):
         self.input_menor_que.setStyleSheet("""
             QLineEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
-                color: black;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
         """)
         self.input_menor_que.textChanged.connect(self.aplicar_filtro_menor_que)
@@ -364,7 +400,7 @@ class ClientesView(QWidget):
         
         # Filtro mayor que
         label_mayor = QLabel("Mayor que:")
-        label_mayor.setStyleSheet("color: #000000;")
+        label_mayor.setStyleSheet("color: #666666;")
         filtros_layout.addWidget(label_mayor)
         
         self.input_mayor_que = QLineEdit()
@@ -373,10 +409,11 @@ class ClientesView(QWidget):
         self.input_mayor_que.setStyleSheet("""
             QLineEdit {
                 padding: 8px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
-                color: black;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
             }
         """)
         self.input_mayor_que.textChanged.connect(self.aplicar_filtro_mayor_que)
@@ -398,31 +435,8 @@ class ClientesView(QWidget):
         self.tabla.setSortingEnabled(True)
         self.tabla.setAlternatingRowColors(False)
         self.tabla.verticalHeader().setVisible(False)
-        
-        # Estilo igual a membresías
-        self.tabla.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #d3d3d3;
-                font-size: 13px;
-                background-color: white;
-                border: 1px solid #e0e0e0;
-            }
-            QTableWidget::item {
-                padding: 5px;
-                color: #2c3e50;
-            }
-            QTableWidget::item:selected {
-                background-color: #3498db;
-                color: black;
-            }
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 8px;
-                font-weight: bold;
-                border: none;
-            }
-        """)
+
+        aplicar_estilo_tabla_moderna(self.tabla)
         
         # Ajustar columnas para que ocupen todo el espacio
         header = self.tabla.horizontalHeader()
@@ -443,6 +457,7 @@ class ClientesView(QWidget):
         self.tabla.setRowCount(len(clientes))
         
         for i, cliente in enumerate(clientes):
+            self.tabla.setRowHeight(i, 52)
             # Nombre
             self.tabla.setItem(i, 0, QTableWidgetItem(cliente['nombre']))
             
@@ -468,51 +483,23 @@ class ClientesView(QWidget):
             else:
                 fecha_texto = "-"
             self.tabla.setItem(i, 4, FechaTableWidgetItem(fecha_texto))
-            
+
             # Botones de acciones
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                    color: white;
-                }
-            """)
+            acciones_layout.setContentsMargins(4, 4, 4, 4)
+            acciones_layout.setSpacing(6)
+            acciones_layout.setAlignment(Qt.AlignCenter)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, c=cliente: self.editar_cliente(c))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                    color: white;
-                }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, cid=cliente['id']: self.eliminar_cliente(cid))
             acciones_layout.addWidget(btn_eliminar)
-            
+
             self.tabla.setCellWidget(i, 5, acciones_widget)
 
         self.tabla.setSortingEnabled(sorting_enabled)
@@ -532,10 +519,10 @@ class ClientesView(QWidget):
                         msg.setText(f"El número {datos['telefono']} ya está vinculado al cliente: {cliente_existente['nombre']}")
                         msg.setStyleSheet("""
                             QMessageBox {
-                                background-color: white;
+                                background-color: #f5f5f5;
                             }
                             QLabel {
-                                color: black;
+                                color: #2c2c2c;
                                 font-size: 13px;
                                 min-width: 300px;
                             }
@@ -560,7 +547,8 @@ class ClientesView(QWidget):
                     nombre=datos['nombre'],
                     telefono=datos['telefono'],
                     sexo=datos['sexo'],
-                    fecha_nacimiento=datos['fecha_nacimiento']
+                    fecha_nacimiento=datos['fecha_nacimiento'],
+                    email=datos.get('email', '')
                 )
                 # Mensaje con estilo
                 msg = QMessageBox(self)
@@ -568,10 +556,10 @@ class ClientesView(QWidget):
                 msg.setText("Cliente agregado exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -597,10 +585,10 @@ class ClientesView(QWidget):
                 msg.setText(f"Error al agregar cliente: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -635,10 +623,10 @@ class ClientesView(QWidget):
                         msg.setText(f"El número {datos['telefono']} ya está vinculado al cliente: {cliente_existente['nombre']}")
                         msg.setStyleSheet("""
                             QMessageBox {
-                                background-color: white;
+                                background-color: #f5f5f5;
                             }
                             QLabel {
-                                color: black;
+                                color: #2c2c2c;
                                 font-size: 13px;
                                 min-width: 300px;
                             }
@@ -664,7 +652,8 @@ class ClientesView(QWidget):
                     nombre=datos['nombre'],
                     telefono=datos['telefono'],
                     sexo=datos['sexo'],
-                    fecha_nacimiento=datos['fecha_nacimiento']
+                    fecha_nacimiento=datos['fecha_nacimiento'],
+                    email=datos.get('email', '')
                 )
                 # Mensaje con estilo
                 msg = QMessageBox(self)
@@ -672,10 +661,10 @@ class ClientesView(QWidget):
                 msg.setText("Cliente actualizado exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -701,10 +690,10 @@ class ClientesView(QWidget):
                 msg.setText(f"Error al actualizar cliente: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -733,15 +722,15 @@ class ClientesView(QWidget):
         msg.setDefaultButton(QMessageBox.No)
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: white;
+                background-color: #ffffff;
             }
             QLabel {
-                color: black;
+                color: #2c2c2c;
                 font-size: 13px;
                 min-width: 300px;
             }
             QPushButton {
-                background-color: #3498db;
+                background-color: #2c3e50;
                 color: white;
                 padding: 8px 20px;
                 border: none;
@@ -751,7 +740,7 @@ class ClientesView(QWidget):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background-color: #3d5166;
             }
         """)
         respuesta = msg.exec()
@@ -765,10 +754,10 @@ class ClientesView(QWidget):
                 msg.setText("Cliente eliminado exitosamente")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -794,10 +783,10 @@ class ClientesView(QWidget):
                 msg.setText(f"Error al eliminar cliente: {str(e)}")
                 msg.setStyleSheet("""
                     QMessageBox {
-                        background-color: white;
+                        background-color: #f5f5f5;
                     }
                     QLabel {
-                        color: black;
+                        color: #2c2c2c;
                         font-size: 13px;
                         min-width: 300px;
                     }
@@ -918,6 +907,7 @@ class ClientesView(QWidget):
         self.tabla.setRowCount(len(clientes))
         
         for i, cliente in enumerate(clientes):
+            self.tabla.setRowHeight(i, 52)
             # Nombre
             self.tabla.setItem(i, 0, QTableWidgetItem(cliente['nombre']))
             
@@ -943,49 +933,20 @@ class ClientesView(QWidget):
             else:
                 fecha_texto = "-"
             self.tabla.setItem(i, 4, QTableWidgetItem(fecha_texto))
-            
+
             # Botones de acciones
             acciones_widget = QWidget()
+            acciones_widget.setStyleSheet("background: transparent; border: none;")
             acciones_layout = QHBoxLayout(acciones_widget)
-            acciones_layout.setContentsMargins(5, 0, 5, 0)
-            acciones_layout.setSpacing(5)
-            
-            btn_editar = QPushButton("Editar")
-            btn_editar.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                    color: white;
-                }
-            """)
+            acciones_layout.setContentsMargins(4, 0, 4, 0)
+            acciones_layout.setSpacing(6)
+
+            btn_editar = crear_boton_icono("edit.svg", "#7a8899", "#8a9aa9", "Editar")
             btn_editar.clicked.connect(lambda checked, c=cliente: self.editar_cliente(c))
             acciones_layout.addWidget(btn_editar)
-            
-            btn_eliminar = QPushButton("Eliminar")
-            btn_eliminar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 5px 15px;
-                    border: none;
-                    border-radius: 3px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                    color: white;
-                }
-            """)
+
+            btn_eliminar = crear_boton_icono("delete.svg", "#e74c3c", "#c0392b", "Eliminar")
             btn_eliminar.clicked.connect(lambda checked, cid=cliente['id']: self.eliminar_cliente(cid))
             acciones_layout.addWidget(btn_eliminar)
-            
+
             self.tabla.setCellWidget(i, 5, acciones_widget)

@@ -133,6 +133,17 @@ def init_database():
         )
     """)
 
+    # Migraciones: agregar columnas nuevas si no existen
+    try:
+        cursor.execute("ALTER TABLE clientes ADD COLUMN email TEXT")
+    except Exception:
+        pass  # Ya existe
+
+    try:
+        cursor.execute("ALTER TABLE inventario ADD COLUMN stock_minimo INTEGER DEFAULT 0")
+    except Exception:
+        pass  # Ya existe
+
     conn.commit()
     conn.close()
     
