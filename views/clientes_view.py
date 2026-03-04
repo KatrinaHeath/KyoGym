@@ -9,6 +9,7 @@ from datetime import date
 from services import cliente_service
 from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
 from utils.table_styles import aplicar_estilo_tabla_moderna
+from utils.table_utils import limpiar_tabla
 from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit, crear_validador_email
 
 
@@ -272,15 +273,16 @@ class ClientesView(QWidget):
         
         # Búsqueda
         self.buscar_input = QLineEdit()
-        self.buscar_input.setPlaceholderText("Buscar cliente...")
-        self.buscar_input.setMinimumWidth(250)
+        self.buscar_input.setPlaceholderText("🔍 Buscar cliente...")
+        self.buscar_input.setClearButtonEnabled(True)
+        self.buscar_input.setFixedWidth(220)
         self.buscar_input.setStyleSheet("""
             QLineEdit {
-                padding: 8px;
-                border: 2px solid #d0d0d0;
+                padding: 8px 10px;
+                border: 1px solid #d0d0d0;
                 border-radius: 5px;
                 font-size: 13px;
-                color: #1a1a1a;
+                color: #2c2c2c;
                 background-color: #f5f5f5;
             }
             QLineEdit:focus {
@@ -453,6 +455,8 @@ class ClientesView(QWidget):
 
         sorting_enabled = self.tabla.isSortingEnabled()
         self.tabla.setSortingEnabled(False)
+
+        limpiar_tabla(self.tabla)
         
         self.tabla.setRowCount(len(clientes))
         
@@ -904,6 +908,7 @@ class ClientesView(QWidget):
             clientes = clientes_filtrados
         
         # Actualizar tabla con clientes filtrados
+        limpiar_tabla(self.tabla)
         self.tabla.setRowCount(len(clientes))
         
         for i, cliente in enumerate(clientes):

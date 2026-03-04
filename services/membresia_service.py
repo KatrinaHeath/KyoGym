@@ -61,8 +61,11 @@ def crear_membresia(cliente_id, tipo="Mensual", monto=0.0, fecha_inicio=None, pa
     except (ValueError, TypeError):
         monto = 0.0
     
-    # Calcular fecha de vencimiento (30 días por defecto para mensual)
-    fecha_vencimiento = fecha_inicio + timedelta(days=30)
+    # Calcular fecha de vencimiento según el tipo
+    if tipo and "quincenal" in tipo.lower():
+        fecha_vencimiento = fecha_inicio + timedelta(days=15)
+    else:
+        fecha_vencimiento = fecha_inicio + timedelta(days=30)
     
     cursor.execute("""
         INSERT INTO membresias (cliente_id, tipo, fecha_inicio, fecha_vencimiento, monto, pago_id)
@@ -183,8 +186,11 @@ def actualizar_membresia(membresia_id, cliente_id, tipo, fecha_inicio, monto):
     if isinstance(fecha_inicio, str):
         fecha_inicio = date.fromisoformat(fecha_inicio)
     
-    # Recalcular fecha de vencimiento
-    fecha_vencimiento = fecha_inicio + timedelta(days=30)
+    # Recalcular fecha de vencimiento según el tipo
+    if tipo and "quincenal" in tipo.lower():
+        fecha_vencimiento = fecha_inicio + timedelta(days=15)
+    else:
+        fecha_vencimiento = fecha_inicio + timedelta(days=30)
     
     cursor.execute("""
         UPDATE membresias
@@ -197,11 +203,19 @@ def actualizar_membresia(membresia_id, cliente_id, tipo, fecha_inicio, monto):
 
 
 def eliminar_membresia(membresia_id):
-    """Elimina una membresía"""
+    """Elimina una membresía y su pago asociado si existe"""
     conn = get_connection()
     cursor = conn.cursor()
     
+    # Obtener pago_id antes de eliminar
+    cursor.execute("SELECT pago_id FROM membresias WHERE id = ?", (membresia_id,))
+    row = cursor.fetchone()
+    pago_id = row['pago_id'] if row else None
+    
     cursor.execute("DELETE FROM membresias WHERE id = ?", (membresia_id,))
+    
+    if pago_id:
+        cursor.execute("DELETE FROM pagos WHERE id = ?", (pago_id,))
     
     conn.commit()
     conn.close()

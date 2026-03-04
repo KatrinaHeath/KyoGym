@@ -57,6 +57,8 @@ def init_database():
             monto REAL NOT NULL,
             metodo TEXT NOT NULL,
             concepto TEXT,
+            producto_id INTEGER,
+            cantidad INTEGER DEFAULT 1,
             FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
         )
     """)
@@ -141,6 +143,17 @@ def init_database():
 
     try:
         cursor.execute("ALTER TABLE inventario ADD COLUMN stock_minimo INTEGER DEFAULT 0")
+    except Exception:
+        pass  # Ya existe
+
+    # Pagos: soportar venta de productos (cantidad) sin romper DBs existentes
+    try:
+        cursor.execute("ALTER TABLE pagos ADD COLUMN producto_id INTEGER")
+    except Exception:
+        pass  # Ya existe
+
+    try:
+        cursor.execute("ALTER TABLE pagos ADD COLUMN cantidad INTEGER DEFAULT 1")
     except Exception:
         pass  # Ya existe
 

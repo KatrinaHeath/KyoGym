@@ -1109,7 +1109,10 @@ class DashboardView(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo generar el PDF:\n{str(e)}")
     
     def _capturar_widget_como_imagen(self, widget, ancho_px=400, alto_px=300):
-        """Captura un widget como imagen PNG temporal"""
+        """Captura un widget como imagen PNG temporal sin alterar su geometría"""
+        # Guardar tamaño original antes de redimensionar
+        size_original = widget.size()
+        
         # Redimensionar a la resolución deseada antes de capturar
         widget.resize(ancho_px, alto_px)
         widget.repaint()
@@ -1121,6 +1124,11 @@ class DashboardView(QWidget):
             pixmap.fill(QColor("white"))
             from PySide6.QtCore import QPoint, QRect as _QRect
             widget.render(pixmap, QPoint(0, 0))
+        
+        # Restaurar tamaño original para no alterar el layout de la UI
+        widget.resize(size_original)
+        widget.repaint()
+        
         tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
         pixmap.save(tmp.name, 'PNG')
         tmp.close()
@@ -1202,13 +1210,13 @@ class DashboardView(QWidget):
             
             # Gráfico de membresías a la izquierda
             c.setFont("Helvetica-Bold", 10)
-            c.drawString(40, y, "Membresias por estado")
+            c.drawCentredString(40 + img_w / 2, y, "Membresias por estado")
             y -= 5
-            c.drawImage(ImageReader(img_torta_membresias), 40, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+            c.drawImage(ImageReader(img_torta_membresias), 40, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, anchor='c', mask='auto')
             
             # Gráfico de sexo a la derecha
-            c.drawString(300, y + 5, "Clientes por sexo")
-            c.drawImage(ImageReader(img_torta_sexo), 300, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+            c.drawCentredString(300 + img_w / 2, y + 5, "Clientes por sexo")
+            c.drawImage(ImageReader(img_torta_sexo), 300, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, anchor='c', mask='auto')
             
             y -= img_h + 20
             

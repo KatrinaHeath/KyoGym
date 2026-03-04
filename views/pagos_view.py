@@ -11,6 +11,7 @@ from services import inventario_service
 from utils.factura_generator import generar_factura_pago, abrir_factura
 from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
 from utils.table_styles import aplicar_estilo_tabla_moderna
+from utils.table_utils import limpiar_tabla
 from utils.validators import crear_validador_numerico_decimal, crear_validador_entero
 from pathlib import Path
 
@@ -250,7 +251,13 @@ class RegistrarPagoDialog(QDialog):
             self.metodo.setCurrentIndex(index)
         
         # Concepto
-        self.concepto.setText(self.pago.get('concepto', ''))
+        concepto_guardado = self.pago.get('concepto', '')
+        index = self.concepto.findText(concepto_guardado)
+        if index >= 0:
+            self.concepto.setCurrentIndex(index)
+        else:
+            # Es un nombre de producto directamente almacenado
+            self.concepto.setCurrentText('Producto')
     
     def aceptar(self):
         """Valida y acepta el diálogo"""
@@ -340,6 +347,7 @@ class RegistrarPagoDialog(QDialog):
 
         if concepto_texto == "Producto":
             producto_id = self.combo_producto.currentData()
+            nombre_producto = self.combo_producto.currentText()
             try:
                 cantidad = int(self.input_cantidad.text())
                 if cantidad <= 0:
@@ -350,6 +358,7 @@ class RegistrarPagoDialog(QDialog):
 
             datos['producto_id'] = producto_id
             datos['cantidad'] = cantidad
+            datos['concepto'] = nombre_producto  # Guardar nombre real del producto
 
         return datos
 
@@ -375,6 +384,20 @@ class PagosView(QWidget):
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
+        
+        self.search_cliente = QLineEdit()
+        self.search_cliente.setPlaceholderText("🔍 Buscar cliente...")
+        self.search_cliente.setClearButtonEnabled(True)
+        self.search_cliente.setFixedWidth(220)
+        self.search_cliente.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 5px;
+                background-color: #f5f5f5; font-size: 13px; color: #2c2c2c;
+            }
+            QLineEdit:focus { border: 2px solid #c0c0c0; }
+        """)
+        self.search_cliente.textChanged.connect(lambda: self.cargar_datos(limite=500))
+        header_layout.addWidget(self.search_cliente)
         
         btn_registrar = QPushButton("Registrar Pago")
         btn_registrar.setStyleSheet("""
@@ -578,12 +601,20 @@ class PagosView(QWidget):
         self.setLayout(layout)
         self.actualizar_total_mes()
     
+    def _filtrar_por_cliente(self, pagos):
+        """Filtra la lista de pagos por el texto ingresado en el buscador de cliente"""
+        texto = self.search_cliente.text().strip().lower()
+        if texto:
+            return [p for p in pagos if texto in p.get('cliente_nombre', '').lower()]
+        return pagos
+
     def cargar_datos(self, limite=100):
         """Carga los datos de pagos"""
-        pagos = pago_service.listar_pagos(limite=limite)
+        pagos = self._filtrar_por_cliente(pago_service.listar_pagos(limite=limite))
         sorting_enabled = self.tabla.isSortingEnabled()
         self.tabla.setSortingEnabled(False)
-        
+
+        limpiar_tabla(self.tabla)
         self.tabla.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
@@ -646,10 +677,11 @@ class PagosView(QWidget):
     
     def cargar_pagos_mes(self):
         """Carga solo los pagos del mes actual"""
-        pagos = pago_service.obtener_pagos_del_mes()
+        pagos = self._filtrar_por_cliente(pago_service.obtener_pagos_del_mes())
         sorting_enabled = self.tabla.isSortingEnabled()
         self.tabla.setSortingEnabled(False)
-        
+
+        limpiar_tabla(self.tabla)
         self.tabla.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
@@ -713,7 +745,7 @@ class PagosView(QWidget):
     def cargar_pagos_mayores_10(self):
         """Carga pagos cuyo monto sea mayor a 10 dólares"""
         pagos = pago_service.listar_pagos(limite=1000)
-        pagos_filtrados = [p for p in pagos if p.get('monto', 0) > 10]
+        pagos_filtrados = self._filtrar_por_cliente([p for p in pagos if p.get('monto', 0) > 10])
 
         self.label_total.setText(f"Total > $10: ${sum(p['monto'] for p in pagos_filtrados):,.2f}")
         self._poblar_tabla_pagos(pagos_filtrados)
@@ -734,7 +766,7 @@ class PagosView(QWidget):
             QMessageBox.warning(self, "Error", "La fecha 'Desde' no puede ser mayor que 'Hasta'.")
             return
         
-        pagos = pago_service.listar_pagos(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, limite=1000)
+        pagos = self._filtrar_por_cliente(pago_service.listar_pagos(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, limite=1000))
         total_filtrado = sum(p['monto'] for p in pagos)
         self.label_total.setText(f"Total filtrado: ${total_filtrado:,.2f}")
         self._poblar_tabla_pagos(pagos)
@@ -750,6 +782,7 @@ class PagosView(QWidget):
         """Llena la tabla con la lista de pagos proporcionada"""
         sorting_enabled = self.tabla.isSortingEnabled()
         self.tabla.setSortingEnabled(False)
+        limpiar_tabla(self.tabla)
         self.tabla.setRowCount(len(pagos))
         
         for i, pago in enumerate(pagos):
@@ -885,8 +918,20 @@ class PagosView(QWidget):
                 metodo=datos['metodo'],
                 concepto=datos['concepto']
             )
+            # Regenerar factura con datos actualizados
+            try:
+                pago_actualizado = pago_service.obtener_pago(pago['id'])
+                cliente = cliente_service.obtener_cliente(datos['cliente_id'])
+                generar_factura_pago(pago_actualizado, cliente)
+            except Exception:
+                pass
             self.cargar_datos()
             self.actualizar_total_mes()
+            # Actualizar dashboard si está disponible
+            try:
+                self.window().dashboard_view.cargar_datos()
+            except Exception:
+                pass
             # Mensaje con estilo
             msg = QMessageBox(self)
             msg.setWindowTitle("Éxito")
@@ -998,6 +1043,16 @@ class PagosView(QWidget):
                 pago_service.eliminar_pago(pago_id)
                 self.cargar_datos()
                 self.actualizar_total_mes()
+                # Refrescar membresías si está disponible
+                try:
+                    self.window().membresias_view.cargar_datos()
+                except Exception:
+                    pass
+                # Refrescar dashboard si está disponible
+                try:
+                    self.window().dashboard_view.cargar_datos()
+                except Exception:
+                    pass
                 # Mensaje con estilo
                 msg = QMessageBox(self)
                 msg.setWindowTitle("Éxito")

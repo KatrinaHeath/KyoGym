@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QPixmap
 from utils.iconos_ui import crear_boton_icono
 from utils.table_styles import aplicar_estilo_tabla_moderna
+from utils.table_utils import limpiar_tabla
 from utils.validators import crear_validador_nombre, TelefonoFormateadoLineEdit, crear_validador_email
 from usuario_activo import obtener_usuario_activo
 from db import create_user, get_all_users, delete_user
@@ -72,6 +73,7 @@ class VerUsuariosDialog(QDialog):
 
     def _cargar(self):
         usuarios = get_all_users()
+        limpiar_tabla(self.tabla)
         self.tabla.setRowCount(len(usuarios))
         for row, u in enumerate(usuarios):
             username = u['username']

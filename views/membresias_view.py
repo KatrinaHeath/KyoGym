@@ -12,6 +12,7 @@ from utils.constants import ESTADO_ACTIVA, ESTADO_POR_VENCER, ESTADO_VENCIDA
 from utils.factura_generator import generar_factura_membresia, abrir_factura
 from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
 from utils.table_styles import aplicar_estilo_tabla_moderna
+from utils.table_utils import limpiar_tabla
 from utils.validators import crear_validador_numerico_decimal
 
 
@@ -137,11 +138,29 @@ class AgregarMembresiaDialog(QDialog):
         self.fecha_inicio.setDisplayFormat("dd/MM/yyyy")
         layout.addRow("Fecha Inicio:", self.fecha_inicio)
         
+        # Tipo de membresía
+        self.combo_tipo = QComboBox()
+        self.combo_tipo.addItem("Mensualidad", 25.00)
+        self.combo_tipo.addItem("Mensualidad + Entrenador", 50.00)
+        self.combo_tipo.addItem("Quincenal", 15.00)
+        layout.addRow("Tipo:", self.combo_tipo)
+
+        # Método de pago (solo aplica al crear, ya que la edición no modifica el pago asociado)
+        self.combo_metodo_pago = QComboBox()
+        self.combo_metodo_pago.addItems(["Efectivo", "Tarjeta", "Transferencia", "Otro"])
+        if self.membresia:
+            self.combo_metodo_pago.setEnabled(False)
+        layout.addRow("Método de pago:", self.combo_metodo_pago)
+        
         # Monto
         self.monto = QLineEdit()
         self.monto.setPlaceholderText("0.00")
         self.monto.setValidator(crear_validador_numerico_decimal())
         layout.addRow("Monto:", self.monto)
+        
+        # Rellenar monto según tipo seleccionado
+        self._actualizar_monto_por_tipo(0)
+        self.combo_tipo.currentIndexChanged.connect(self._actualizar_monto_por_tipo)
         
         # Botones
         botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -150,6 +169,12 @@ class AgregarMembresiaDialog(QDialog):
         layout.addRow(botones)
         
         self.setLayout(layout)
+    
+    def _actualizar_monto_por_tipo(self, index):
+        """Rellena el monto según el tipo de membresía seleccionado"""
+        precio = self.combo_tipo.itemData(index)
+        if precio is not None:
+            self.monto.setText(f"{precio:.2f}")
     
     def cargar_clientes(self):
         """Carga la lista de clientes con búsqueda en tiempo real"""
@@ -201,6 +226,31 @@ class AgregarMembresiaDialog(QDialog):
         
         # Monto
         self.monto.setText(str(self.membresia['monto']))
+        
+        # Tipo (si existe en los datos guardados)
+        tipo_guardado = self.membresia.get('tipo', '')
+        if tipo_guardado:
+            idx_tipo = self.combo_tipo.findText(tipo_guardado)
+            if idx_tipo >= 0:
+                self.combo_tipo.blockSignals(True)
+                self.combo_tipo.setCurrentIndex(idx_tipo)
+                self.combo_tipo.blockSignals(False)
+
+        # Método de pago (informativo: se intenta cargar desde el pago asociado)
+        try:
+            pago_id = self.membresia.get('pago_id')
+            if pago_id:
+                from services import pago_service
+
+                pago = pago_service.obtener_pago(pago_id)
+                metodo = (pago or {}).get('metodo')
+                if metodo:
+                    idx_metodo = self.combo_metodo_pago.findText(metodo)
+                    if idx_metodo >= 0:
+                        self.combo_metodo_pago.setCurrentIndex(idx_metodo)
+        except Exception:
+            # Si falla, mantener el valor por defecto
+            pass
     
     def aceptar(self):
         """Valida y acepta el diálogo"""
@@ -260,7 +310,9 @@ class AgregarMembresiaDialog(QDialog):
         return {
             'cliente_id': cliente_id,
             'fecha_inicio': date(fecha.year(), fecha.month(), fecha.day()),
-            'monto': float(monto_texto) if monto_texto else 0.0
+            'tipo': self.combo_tipo.currentText(),
+            'monto': float(monto_texto) if monto_texto else 0.0,
+            'metodo_pago': self.combo_metodo_pago.currentText() or "Efectivo",
         }
 
 
@@ -288,6 +340,20 @@ class MembresiasView(QWidget):
         header_layout.addWidget(titulo)
         
         header_layout.addStretch()
+        
+        self.search_cliente = QLineEdit()
+        self.search_cliente.setPlaceholderText("🔍 Buscar cliente...")
+        self.search_cliente.setClearButtonEnabled(True)
+        self.search_cliente.setFixedWidth(220)
+        self.search_cliente.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 5px;
+                background-color: #f5f5f5; font-size: 13px; color: #2c2c2c;
+            }
+            QLineEdit:focus { border: 2px solid #c0c0c0; }
+        """)
+        self.search_cliente.textChanged.connect(self.cargar_datos)
+        header_layout.addWidget(self.search_cliente)
         
         btn_agregar = QPushButton("Agregar Membresía")
         btn_agregar.setStyleSheet("""
@@ -529,10 +595,16 @@ class MembresiasView(QWidget):
                 m for m in membresias
                 if self.filtro_fecha_desde <= date.fromisoformat(m['fecha_vencimiento']) <= self.filtro_fecha_hasta
             ]
+        
+        # Aplicar filtro por nombre de cliente
+        texto_busqueda = self.search_cliente.text().strip().lower()
+        if texto_busqueda:
+            membresias = [m for m in membresias if texto_busqueda in m['cliente_nombre'].lower()]
 
         sorting_enabled = self.tabla.isSortingEnabled()
         self.tabla.setSortingEnabled(False)
-        
+
+        limpiar_tabla(self.tabla)
         self.tabla.setRowCount(len(membresias))
 
         for i, membresia in enumerate(membresias):
@@ -651,12 +723,14 @@ class MembresiasView(QWidget):
                 
                 # Importar pago_service aquí para evitar imports circulares
                 from services import pago_service
+
+                metodo_pago = (datos.get('metodo_pago') or "Efectivo").strip() or "Efectivo"
                 
                 # Crear el pago primero
                 ok_pago, pago_id = pago_service.crear_pago(
                     cliente_id=datos['cliente_id'],
                     monto=datos['monto'],
-                    metodo="Efectivo",  # Método por defecto
+                    metodo=metodo_pago,
                     fecha_pago=datos['fecha_inicio'],
                     concepto="Pago de membresía"
                 )
@@ -666,6 +740,7 @@ class MembresiasView(QWidget):
                 # Crear membresía con el pago_id
                 membresia_id = membresia_service.crear_membresia(
                     cliente_id=datos['cliente_id'],
+                    tipo=datos.get('tipo', 'Mensualidad'),
                     fecha_inicio=datos['fecha_inicio'],
                     monto=datos['monto'],
                     pago_id=pago_id
@@ -753,7 +828,7 @@ class MembresiasView(QWidget):
                 membresia_service.actualizar_membresia(
                     membresia_id=membresia['id'],
                     cliente_id=datos['cliente_id'],
-                    tipo="Mensual",
+                    tipo=datos.get('tipo', 'Mensualidad'),
                     fecha_inicio=datos['fecha_inicio'],
                     monto=datos['monto']
                 )
@@ -898,6 +973,25 @@ class MembresiasView(QWidget):
             try:
                 membresia_service.eliminar_membresia(membresia_id)
                 self.cargar_datos()
+                # Refrescar tabla de pagos si está disponible
+                try:
+                    self.window().pagos_view.cargar_datos()
+                    self.window().pagos_view.actualizar_total_mes()
+                except Exception:
+                    pass
+                # Refrescar dashboard si está disponible
+                try:
+                    self.window().dashboard_view.cargar_datos()
+                except Exception:
+                    pass
+                # Eliminar factura PDF de la membresía si existe
+                try:
+                    from pathlib import Path
+                    ruta_factura = Path.home() / "KyoGym" / "Facturas" / f"Factura_{membresia_id}.pdf"
+                    if ruta_factura.exists():
+                        ruta_factura.unlink()
+                except Exception:
+                    pass
                 # Mensaje con estilo
                 msg = QMessageBox(self)
                 msg.setWindowTitle("Éxito")

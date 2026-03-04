@@ -7,13 +7,19 @@ from services.inventario_service import vender_producto
 def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto="", producto_id=None, cantidad=1):
     """Registra un nuevo pago y descuenta inventario si es producto"""
 
-    # Si es venta de producto, descontar primero
-    if concepto == "Producto":
-        if not producto_id:
-            return False, "Debe seleccionar un producto"
+    # Normalizar cantidad
+    try:
+        cantidad = int(cantidad) if cantidad is not None else 1
+    except Exception:
+        cantidad = 1
+    if cantidad <= 0:
+        return False, "Cantidad inválida"
 
+    # Si es venta de producto, descontar primero.
+    # Nota: en la UI el 'concepto' se guarda como nombre del producto,
+    # por eso no podemos depender de concepto == 'Producto'.
+    if producto_id is not None:
         ok, mensaje = vender_producto(producto_id, cantidad)
-
         if not ok:
             return False, mensaje  # No registrar pago si falla stock
 
@@ -25,10 +31,17 @@ def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto="", producto
     elif isinstance(fecha_pago, str):
         fecha_pago = date.fromisoformat(fecha_pago)
 
-    cursor.execute("""
-        INSERT INTO pagos (cliente_id, fecha, monto, metodo, concepto)
-        VALUES (?, ?, ?, ?, ?)
-    """, (cliente_id, fecha_pago.isoformat(), monto, metodo, concepto))
+    # Insert compatible con DBs antiguas (sin columnas de producto/cantidad)
+    try:
+        cursor.execute("""
+            INSERT INTO pagos (cliente_id, fecha, monto, metodo, concepto, producto_id, cantidad)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (cliente_id, fecha_pago.isoformat(), monto, metodo, concepto, producto_id, cantidad))
+    except Exception:
+        cursor.execute("""
+            INSERT INTO pagos (cliente_id, fecha, monto, metodo, concepto)
+            VALUES (?, ?, ?, ?, ?)
+        """, (cliente_id, fecha_pago.isoformat(), monto, metodo, concepto))
 
     pago_id = cursor.lastrowid
     conn.commit()
@@ -144,12 +157,32 @@ def actualizar_pago(pago_id, cliente_id, monto, metodo, fecha_pago, concepto="")
 
 
 def eliminar_pago(pago_id):
-    """Elimina un pago"""
+    """Elimina un pago y la membresía vinculada a él (si existe)"""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
+    # Buscar si hay una membresía que referencia este pago
+    cursor.execute("SELECT id FROM membresias WHERE pago_id = ?", (pago_id,))
+    row = cursor.fetchone()
+    membresia_id = row['id'] if row else None
+
+    if membresia_id:
+        cursor.execute("DELETE FROM membresias WHERE id = ?", (membresia_id,))
+
     cursor.execute("DELETE FROM pagos WHERE id = ?", (pago_id,))
-    
+
     conn.commit()
     conn.close()
+
+    # Eliminar factura PDF de la membresía si existía
+    if membresia_id:
+        try:
+            from pathlib import Path
+            ruta = Path.home() / "KyoGym" / "Facturas" / f"Factura_{membresia_id}.pdf"
+            if ruta.exists():
+                ruta.unlink()
+        except Exception:
+            pass
+
+    return membresia_id  # Devuelve el id eliminado o None
 

@@ -166,6 +166,11 @@ class OneDriveSyncPersonal:
         data['pagos'] = [dict(row) for row in cursor.fetchall()]
         print(f"  ✓ Pagos: {len(data['pagos'])} registros")
         
+        # Leer inventario
+        cursor.execute("SELECT * FROM inventario ORDER BY id")
+        data['inventario'] = [dict(row) for row in cursor.fetchall()]
+        print(f"  ✓ Inventario: {len(data['inventario'])} registros")
+        
         conn.close()
         return data
     
@@ -194,6 +199,8 @@ class OneDriveSyncPersonal:
         ws_resumen['B6'] = len(data['membresias'])
         ws_resumen['A7'] = "Total Pagos:"
         ws_resumen['B7'] = len(data['pagos'])
+        ws_resumen['A8'] = "Total Productos en Inventario:"
+        ws_resumen['B8'] = len(data['inventario'])
         
         # Hoja 2: Clientes
         ws_clientes = wb.create_sheet("Clientes")
@@ -248,6 +255,24 @@ class OneDriveSyncPersonal:
             
             for col in range(1, len(headers) + 1):
                 ws_pagos.column_dimensions[get_column_letter(col)].width = 15
+        
+        # Hoja 5: Inventario
+        ws_inventario = wb.create_sheet("Inventario")
+        
+        if data['inventario']:
+            headers = list(data['inventario'][0].keys())
+            for col, header in enumerate(headers, 1):
+                cell = ws_inventario.cell(1, col, header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+            
+            for row_idx, producto in enumerate(data['inventario'], 2):
+                for col_idx, header in enumerate(headers, 1):
+                    ws_inventario.cell(row_idx, col_idx, producto[header])
+            
+            for col in range(1, len(headers) + 1):
+                ws_inventario.column_dimensions[get_column_letter(col)].width = 15
         
         wb.save(output_path)
         print(f"✅ Archivo Excel creado")

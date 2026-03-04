@@ -142,20 +142,37 @@ def generar_factura_membresia(membresia, cliente, ruta_salida=None):
     
     # Encabezado de artículos
     c.setFont(fuente_bold, 9)
-    c.drawString(margen_izq, y_pos, f"1 artículos (Cant.: 1)")
+    c.drawString(margen_izq, y_pos, "1 artículo (Cant.: 1)")
     y_pos -= 6 * mm
     
     # Línea separadora
     c.line(margen_izq, y_pos, ancho_ticket - margen_izq, y_pos)
     y_pos -= 5 * mm
     
-    # Artículo: Mensualidad
+    # Artículo: tipo de membresía
+    tipo_label = membresia.get('tipo', 'Mensualidad') or 'Mensualidad'
     c.setFont(fuente_normal, 9)
-    c.drawString(margen_izq, y_pos, "1x  Mensualidad")
     monto_texto = f"${membresia['monto']:.2f}"
     ancho_monto = c.stringWidth(monto_texto, fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - ancho_monto, y_pos, monto_texto)
-    y_pos -= 6 * mm
+    linea_encabezado = "1x  Membresía de tipo"
+
+    # Verificar si todo el texto cabe en una línea junto al precio
+    texto_completo = f"1x  Membresía de tipo {tipo_label}"
+    ancho_max_desc = ancho_contenido - ancho_monto - 2 * mm
+
+    if c.stringWidth(texto_completo, fuente_normal, 9) <= ancho_max_desc:
+        # Cabe en una sola línea: texto y precio en la misma fila
+        c.drawString(margen_izq, y_pos, texto_completo)
+        c.drawString(ancho_ticket - margen_izq - ancho_monto, y_pos, monto_texto)
+        y_pos -= 5 * mm
+    else:
+        # No cabe: primera línea con "1x  Membresía de tipo" + precio a la derecha
+        c.drawString(margen_izq, y_pos, linea_encabezado)
+        c.drawString(ancho_ticket - margen_izq - ancho_monto, y_pos, monto_texto)
+        y_pos -= 5 * mm
+        # Segunda línea: el tipo de membresía indentado
+        c.drawString(margen_izq + 4 * mm, y_pos, tipo_label)
+        y_pos -= 5 * mm
     
     # Fechas de la mensualidad
     c.setFont(fuente_normal, 7)
@@ -165,6 +182,31 @@ def generar_factura_membresia(membresia, cliente, ruta_salida=None):
     ancho_texto = c.stringWidth(periodo_texto, fuente_normal, 7)
     x_centrado = (ancho_ticket - ancho_texto) / 2
     c.drawString(x_centrado, y_pos, periodo_texto)
+    y_pos -= 6 * mm
+
+    # Método de pago (si está disponible por membresía o por pago_id)
+    metodo = membresia.get('metodo') or membresia.get('metodo_pago')
+    if not metodo and membresia.get('pago_id'):
+        try:
+            from db import get_connection
+
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT metodo FROM pagos WHERE id = ?", (membresia.get('pago_id'),))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                # row puede ser sqlite3.Row o tuple
+                metodo = row['metodo'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+        except Exception:
+            metodo = None
+    metodo = (metodo or 'Efectivo').strip() or 'Efectivo'
+
+    c.setFont(fuente_normal, 7)
+    metodo_texto = f"Método: {metodo}"
+    ancho_texto = c.stringWidth(metodo_texto, fuente_normal, 7)
+    x_centrado = (ancho_ticket - ancho_texto) / 2
+    c.drawString(x_centrado, y_pos, metodo_texto)
     y_pos -= 6 * mm
     
     # Línea separadora
@@ -187,20 +229,36 @@ def generar_factura_membresia(membresia, cliente, ruta_salida=None):
     c.drawString(ancho_ticket - margen_izq - ancho_total, y_pos, total_texto)
     y_pos -= 6 * mm
     
-    # Efectivo
+    # Pago / entregado al cajero (siempre) + cambio (normalmente 0)
     c.setFont(fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Efectivo:")
-    efectivo_texto = f"${membresia['monto']:.2f}"
-    ancho_efectivo = c.stringWidth(efectivo_texto, fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - ancho_efectivo, y_pos, efectivo_texto)
+    metodo_lower = metodo.strip().lower()
+    etiqueta_pago = "Entregado:"
+    importe_texto = f"${membresia['monto']:.2f}"
+
+    ancho_etiqueta = c.stringWidth(etiqueta_pago, fuente_normal, 9)
+    ancho_importe = c.stringWidth(importe_texto, fuente_normal, 9)
+
+    x_importe = ancho_ticket - margen_izq - ancho_importe
+    x_etiqueta = x_importe - 2 * mm - ancho_etiqueta
+    if x_etiqueta < margen_izq:
+        x_etiqueta = margen_izq
+
+    c.drawString(x_etiqueta, y_pos, etiqueta_pago)
+    c.drawString(x_importe, y_pos, importe_texto)
     y_pos -= 5 * mm
-    
-    # Cambio
-    c.setFont(fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Cambio:")
+
+    etiqueta_cambio = "Cambio:"
     cambio_texto = "$0.00"
+    ancho_etiqueta = c.stringWidth(etiqueta_cambio, fuente_normal, 9)
     ancho_cambio = c.stringWidth(cambio_texto, fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - ancho_cambio, y_pos, cambio_texto)
+
+    x_cambio = ancho_ticket - margen_izq - ancho_cambio
+    x_etiqueta = x_cambio - 2 * mm - ancho_etiqueta
+    if x_etiqueta < margen_izq:
+        x_etiqueta = margen_izq
+
+    c.drawString(x_etiqueta, y_pos, etiqueta_cambio)
+    c.drawString(x_cambio, y_pos, cambio_texto)
     y_pos -= 8 * mm
     
     # Línea separadora
@@ -371,7 +429,14 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     
     # Encabezado de artículos
     c.setFont(fuente_bold, 9)
-    c.drawString(margen_izq, y_pos, f"1 artículos (Cant.: 1)")
+    try:
+        cantidad = int(pago.get('cantidad', 1) or 1)
+    except Exception:
+        cantidad = 1
+    if cantidad <= 0:
+        cantidad = 1
+    etiqueta_articulo = "artículo" if cantidad == 1 else "artículos"
+    c.drawString(margen_izq, y_pos, f"{cantidad} {etiqueta_articulo} (Cant.: {cantidad})")
     y_pos -= 6 * mm
     
     # Línea separadora
@@ -381,7 +446,7 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     # Artículo: Pago
     c.setFont(fuente_normal, 9)
     concepto = pago.get('concepto', 'Pago')
-    c.drawString(margen_izq, y_pos, f"1x  {concepto}")
+    c.drawString(margen_izq, y_pos, f"{cantidad}x  {concepto}")
     monto_texto = f"${pago['monto']:.2f}"
     ancho_monto = c.stringWidth(monto_texto, fuente_normal, 9)
     c.drawString(ancho_ticket - margen_izq - ancho_monto, y_pos, monto_texto)
@@ -425,20 +490,39 @@ def generar_factura_pago(pago, cliente, ruta_salida=None):
     c.drawString(ancho_ticket - margen_izq - ancho_total, y_pos, total_texto)
     y_pos -= 6 * mm
     
-    # Efectivo
+    # Pagado / entregado al cajero (no siempre es efectivo)
     c.setFont(fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Efectivo:")
-    efectivo_texto = f"${pago['monto']:.2f}"
-    ancho_efectivo = c.stringWidth(efectivo_texto, fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - ancho_efectivo, y_pos, efectivo_texto)
+    metodo = (pago.get('metodo') or 'Efectivo').strip() or 'Efectivo'
+    metodo_lower = metodo.lower()
+    etiqueta_pago = "Entregado:"
+    importe_texto = f"${pago['monto']:.2f}"
+
+    ancho_etiqueta = c.stringWidth(etiqueta_pago, fuente_normal, 9)
+    ancho_importe = c.stringWidth(importe_texto, fuente_normal, 9)
+
+    x_importe = ancho_ticket - margen_izq - ancho_importe
+    x_etiqueta = x_importe - 2 * mm - ancho_etiqueta
+    if x_etiqueta < margen_izq:
+        x_etiqueta = margen_izq
+
+    c.drawString(x_etiqueta, y_pos, etiqueta_pago)
+    c.drawString(x_importe, y_pos, importe_texto)
     y_pos -= 5 * mm
-    
-    # Cambio
-    c.setFont(fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - 25*mm, y_pos, "Cambio:")
+
+    # Cambio (siempre; normalmente 0)
+    etiqueta_cambio = "Cambio:"
     cambio_texto = "$0.00"
+
+    ancho_etiqueta = c.stringWidth(etiqueta_cambio, fuente_normal, 9)
     ancho_cambio = c.stringWidth(cambio_texto, fuente_normal, 9)
-    c.drawString(ancho_ticket - margen_izq - ancho_cambio, y_pos, cambio_texto)
+
+    x_cambio = ancho_ticket - margen_izq - ancho_cambio
+    x_etiqueta = x_cambio - 2 * mm - ancho_etiqueta
+    if x_etiqueta < margen_izq:
+        x_etiqueta = margen_izq
+
+    c.drawString(x_etiqueta, y_pos, etiqueta_cambio)
+    c.drawString(x_cambio, y_pos, cambio_texto)
     y_pos -= 8 * mm
     
     # Línea separadora

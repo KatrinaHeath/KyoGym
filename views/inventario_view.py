@@ -8,6 +8,7 @@ from PySide6.QtGui import QFont, QColor
 from services import inventario_service
 from utils.iconos_ui import crear_boton_icono, crear_widget_centrado
 from utils.table_styles import aplicar_estilo_tabla_moderna
+from utils.table_utils import limpiar_tabla
 from utils.validators import crear_validador_nombre, crear_validador_entero, crear_validador_numerico_decimal
 
 
@@ -315,6 +316,8 @@ class InventarioView(QWidget):
 
         sorting_enabled = self.tabla.isSortingEnabled()
         self.tabla.setSortingEnabled(False)
+
+        limpiar_tabla(self.tabla)
         
         self.tabla.setRowCount(len(productos))
 
