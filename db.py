@@ -135,6 +135,24 @@ def init_database():
         )
     """)
 
+    # Tabla de egresos (gastos del gimnasio)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS egresos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha DATE NOT NULL,
+            categoria TEXT NOT NULL,
+            descripcion TEXT,
+            proveedor TEXT,
+            metodo TEXT NOT NULL,
+            monto REAL NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_egresos_fecha
+        ON egresos(fecha)
+    """)
+
     # Migraciones: agregar columnas nuevas si no existen
     try:
         cursor.execute("ALTER TABLE clientes ADD COLUMN email TEXT")
@@ -156,6 +174,29 @@ def init_database():
         cursor.execute("ALTER TABLE pagos ADD COLUMN cantidad INTEGER DEFAULT 1")
     except Exception:
         pass  # Ya existe
+
+    # Tabla de asistencias
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS asistencias (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER NOT NULL,
+            fecha DATE NOT NULL,
+            hora_entrada TEXT,
+            hora_salida TEXT,
+            observacion TEXT,
+            origen TEXT DEFAULT 'manual',
+            UNIQUE(cliente_id, fecha),
+            FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_asistencias_cliente
+        ON asistencias(cliente_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_asistencias_fecha
+        ON asistencias(fecha)
+    """)
 
     conn.commit()
     conn.close()
@@ -278,12 +319,12 @@ def ensure_default_user():
         row = cur.fetchone()
         if row and row['cnt'] == 0:
             # Crear usuario por defecto
-            create_user('admin', 'admin123', full_name='Administrador', role='admin')
-            print('Usuario por defecto creado: admin / admin123')
+            create_user('zahir', 'kaiser2026', full_name='Zahir Lay', role='admin')
+            print('Usuario por defecto creado: zahir / kaiser2026')
     except Exception:
         # si algo falla, intentar crear el usuario directamente
         try:
-            create_user('admin', 'admin123', full_name='Administrador', role='admin')
+            create_user('zahir', 'kaiser2026', full_name='Zahir Lay', role='admin')
         except Exception:
             pass
     finally:

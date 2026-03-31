@@ -4,6 +4,23 @@ from db import get_connection
 from services.inventario_service import vender_producto
 
 
+def _auto_asistencia(cliente_id, fecha_pago):
+    """Auto-registra asistencia en la fecha del pago si no existe ya.
+    Se activa solo cuando el cliente tiene alguna membersía registrada."""
+    try:
+        from db import get_connection as _gc
+        conn = _gc()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as cnt FROM membresias WHERE cliente_id=?", (cliente_id,))
+        tiene = cur.fetchone()["cnt"] > 0
+        conn.close()
+        if tiene:
+            from services.asistencia_service import registrar_asistencia_si_no_existe
+            registrar_asistencia_si_no_existe(cliente_id, fecha=fecha_pago, origen="pago")
+    except Exception:
+        pass  # No bloquear el flujo principal
+
+
 def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto="", producto_id=None, cantidad=1):
     """Registra un nuevo pago y descuenta inventario si es producto"""
 
@@ -46,6 +63,52 @@ def crear_pago(cliente_id, monto, metodo, fecha_pago=None, concepto="", producto
     pago_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    _auto_asistencia(cliente_id, fecha_pago)
+    return True, pago_id
+
+
+def crear_pago_multiple(cliente_id, monto, metodo, items, concepto="", fecha_pago=None):
+    """Registra un pago con múltiples ítems (días y/o productos).
+
+    items: lista de dicts con las claves:
+        tipo        ('dia' | 'producto' | 'otro')
+        nombre      str
+        producto_id int | None
+        cantidad    int
+        precio_unit float
+        subtotal    float
+    Descuenta inventario por cada producto antes de insertar el pago.
+    Si cualquier descuento de stock falla, aborta sin registrar el pago.
+    """
+    # ── 1. Verificar y descontar stock de todos los productos ────
+    for item in items:
+        if item.get('tipo') == 'producto' and item.get('producto_id') is not None:
+            ok, mensaje = vender_producto(item['producto_id'], item['cantidad'])
+            if not ok:
+                return False, f"Stock insuficiente para '{item['nombre']}': {mensaje}"
+
+    # ── 2. Insertar el pago ──────────────────────────────────────
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if fecha_pago is None:
+        fecha_pago = date.today()
+    elif isinstance(fecha_pago, str):
+        fecha_pago = date.fromisoformat(fecha_pago)
+
+    try:
+        cursor.execute("""
+            INSERT INTO pagos (cliente_id, fecha, monto, metodo, concepto)
+            VALUES (?, ?, ?, ?, ?)
+        """, (cliente_id, fecha_pago.isoformat(), monto, metodo, concepto))
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+    pago_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    _auto_asistencia(cliente_id, fecha_pago)
     return True, pago_id
 
 

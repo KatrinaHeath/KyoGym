@@ -41,9 +41,13 @@ class StatCard(QFrame):
         self.setFixedHeight(130)
         self.setStyleSheet(f"""
             QFrame {{
-                background-color: #f5f5f5;
-                border-radius: 8px;
-                border: 1px solid #d8d8d8;
+                background-color: #ffffff;
+                border-radius: 12px;
+                border: 1px solid #dce2ea;
+            }}
+            QFrame:hover {{
+                border-color: #a8b6c2;
+                background-color: #fbfdff;
             }}
         """)
         
@@ -383,25 +387,30 @@ class DashboardView(QWidget):
         # Estilos generales
         self.setStyleSheet("""
             QWidget {
-                background-color: #f8f8f8;
+                background-color: #f0f3f6;
                 font-family: Arial, sans-serif;
             }
+            QFrame {
+                background-color: #ffffff;
+                border: none;
+                border-radius: 10px;
+            }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #808080;
+                selection-background-color: #5e88b4;
                 selection-color: white;
                 color: #2c2c2c;
-                background-color: #f5f5f5;
+                background-color: #eaf0f9;
             }
             QCalendarWidget QWidget {
                 color: #2c2c2c;
-                background-color: #f5f5f5;
+                background-color: #eaf0f9;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #f0f0f0;
+                background-color: #dce7f3;
             }
             QCalendarWidget QToolButton {
                 color: #2c2c2c;
-                background-color: #f0f0f0;
+                background-color: #dce7f3;
             }
             QCalendarWidget QMenu {
                 color: #2c2c2c;
@@ -513,9 +522,9 @@ class DashboardView(QWidget):
         filtros_fecha_frame = QFrame()
         filtros_fecha_frame.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-radius: 8px;
-                border: 1px solid #d8d8d8;
+                background-color: #ffffff;
+                border-radius: 10px;
+                border: 1px solid #dce2ea;
             }
         """)
         filtros_fecha_layout = QHBoxLayout(filtros_fecha_frame)
@@ -529,7 +538,7 @@ class DashboardView(QWidget):
         estilo_date = """
             QDateEdit {
                 padding: 6px 10px;
-                border: 1px solid #d0d0d0;
+                border: none;
                 border-radius: 4px;
                 background-color: #f5f5f5;
                 font-size: 12px;
@@ -539,21 +548,21 @@ class DashboardView(QWidget):
             QDateEdit:focus { border: 2px solid #c0c0c0; }
             QDateEdit::drop-down { border: none; }
             QCalendarWidget QAbstractItemView {
-                selection-background-color: #808080;
+                selection-background-color: #5e88b4;
                 selection-color: white;
                 color: #2c2c2c;
-                background-color: #f5f5f5;
+                background-color: #eaf0f9;
             }
             QCalendarWidget QWidget {
                 color: #2c2c2c;
-                background-color: #f5f5f5;
+                background-color: #eaf0f9;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #f0f0f0;
+                background-color: #dce7f3;
             }
             QCalendarWidget QToolButton {
                 color: #2c2c2c;
-                background-color: #f0f0f0;
+                background-color: #dce7f3;
             }
             QCalendarWidget QMenu {
                 color: #2c2c2c;
@@ -664,9 +673,9 @@ class DashboardView(QWidget):
         frame_torta_membresias = QFrame()
         frame_torta_membresias.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-radius: 8px;
-                border: 1px solid #d8d8d8;
+                background-color: #ffffff;
+                border-radius: 10px;
+                border: none;
             }
         """)
         layout_torta_membresias = QVBoxLayout(frame_torta_membresias)
@@ -687,9 +696,9 @@ class DashboardView(QWidget):
         frame_torta_sexo = QFrame()
         frame_torta_sexo.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-radius: 8px;
-                border: 1px solid #d8d8d8;
+                background-color: #ffffff;
+                border-radius: 10px;
+                border: none;
             }
         """)
         layout_torta_sexo = QVBoxLayout(frame_torta_sexo)
@@ -703,7 +712,13 @@ class DashboardView(QWidget):
         
         self.chart_torta_sexo = SimplePieChart()
         layout_torta_sexo.addWidget(self.chart_torta_sexo)
-        
+
+        self.lbl_total_clientes_sexo = QLabel("Total clientes: 0")
+        self.lbl_total_clientes_sexo.setFont(QFont("Arial", 13, QFont.Bold))
+        self.lbl_total_clientes_sexo.setStyleSheet("color:#2c6fad; padding:4px 0; background:transparent;")
+        self.lbl_total_clientes_sexo.setAlignment(Qt.AlignCenter)
+        layout_torta_sexo.addWidget(self.lbl_total_clientes_sexo)
+
         graficos_layout.addWidget(frame_torta_sexo, 1)
         
         layout.addLayout(graficos_layout)
@@ -716,9 +731,9 @@ class DashboardView(QWidget):
         frame_membresias = QFrame()
         frame_membresias.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-radius: 8px;
-                border: 1px solid #d8d8d8;
+                background-color: #ffffff;
+                border-radius: 10px;
+                border: none;
             }
         """)
         layout_membresias = QVBoxLayout(frame_membresias)
@@ -795,9 +810,9 @@ class DashboardView(QWidget):
         frame_pagos = QFrame()
         frame_pagos.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-radius: 8px;
-                border: 1px solid #d8d8d8;
+                background-color: #ffffff;
+                border-radius: 10px;
+                border: none;
             }
         """)
         layout_pagos = QVBoxLayout(frame_pagos)
@@ -936,7 +951,9 @@ class DashboardView(QWidget):
             ("Otro", conteo_sexo['Otro'], QColor("#9b59b6"))
         ]
         self.chart_torta_sexo.update()
-        
+        total_clientes = sum(conteo_sexo.values())
+        self.lbl_total_clientes_sexo.setText(f"Total clientes: {total_clientes}")
+
         # Pagos: si hay filtro de fecha, calcular con ese rango
         if self.filtro_fecha_desde and self.filtro_fecha_hasta:
             pagos_filtrados = pago_service.listar_pagos(
